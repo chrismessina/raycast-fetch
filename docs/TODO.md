@@ -4,14 +4,14 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ---
 
-## Phase 1: Foundation & Single Download
+## Phase 1: Foundation & Single Download ✅
 
 **Goal:** Working single-URL download command with HUD feedback.
 
 ### 1.1 Project Setup
 
-- [ ] Install `@chrismessina/raycast-logger` dependency
-- [ ] Add extension preferences to `package.json`:
+- [x] Install `@chrismessina/raycast-logger` dependency
+- [x] Add extension preferences to `package.json`:
   - `outputDirectory` (directory picker, default `~/Downloads`)
   - `followRedirects` (checkbox, default true)
   - `defaultTimeout` (textfield, default 300)
@@ -20,16 +20,16 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ### 1.2 Core Utilities
 
-- [ ] Create `src/lib/logger.ts`
+- [x] Create `src/lib/logger.ts`
   - Wrap `@chrismessina/raycast-logger`
   - `LogLevel` enum and `LogContext` interface
   - `logDebug()`, `logInfo()`, `logWarn()`, `logError()` functions
   - `logDownloadStart()`, `logDownloadProgress()`, `logDownloadComplete()`, `logDownloadError()` helpers
   - Respect `enableDebugLogging` preference
-- [ ] Create `src/lib/preferences.ts`
+- [x] Create `src/lib/preferences.ts`
   - `getPreferences()` function with typed return
   - Log preference access and validation
-- [ ] Create `src/lib/url-utils.ts`
+- [x] Create `src/lib/url-utils.ts`
   - `isValidUrl(url: string): boolean`
   - `extractFilename(url: string): string`
   - `sanitizeFilename(name: string): string`
@@ -38,7 +38,7 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ### 1.3 Downloader Core
 
-- [ ] Create `src/lib/downloader.ts`
+- [x] Create `src/lib/downloader.ts`
   - `DownloadOptions`, `DownloadProgress`, and `DownloadResult` interfaces
   - `DownloadHandle` interface with pause/resume/cancel methods
   - `downloadFile(options, onProgress?)` using curl spawn
@@ -50,7 +50,7 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ### 1.4 Progress Utilities
 
-- [ ] Create `src/lib/progress.ts`
+- [x] Create `src/lib/progress.ts`
   - `showDownloadProgress(title, progress)` – throttled HUD updates with speed
   - `showDownloadComplete(filename, path)` – success HUD with actions
   - `showDownloadError(filename, error)` – error HUD
@@ -61,7 +61,7 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ### 1.5 Download Command
 
-- [ ] Implement `src/download.ts`
+- [x] Implement `src/download.ts`
   - Read URL from argument or clipboard
   - Validate URL
   - Resolve output path (preference dir + extracted filename)
@@ -333,5 +333,5 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ## Current Status
 
-**Phase:** Not started  
-**Next Step:** Phase 1.1 – Add preferences to package.json
+**Phase:** Phase 1 complete
+**Next Step:** Phase 1.6 – Manual testing, then Phase 2

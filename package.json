@@ -20,7 +20,60 @@
       "title": "Download",
       "subtitle": "Fetch",
       "description": "Download files from the web.",
-      "mode": "no-view"
+      "mode": "no-view",
+      "arguments": [
+        {
+          "name": "url",
+          "placeholder": "URL",
+          "type": "text",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "outputDirectory",
+      "title": "Output Directory",
+      "description": "Default directory to save downloaded files",
+      "type": "directory",
+      "default": "~/Downloads",
+      "required": false
+    },
+    {
+      "name": "followRedirects",
+      "title": "Follow Redirects",
+      "description": "Automatically follow HTTP redirects",
+      "type": "checkbox",
+      "default": true,
+      "label": "Follow HTTP redirects",
+      "required": false
+    },
+    {
+      "name": "defaultTimeout",
+      "title": "Timeout (seconds)",
+      "description": "Download timeout in seconds",
+      "type": "textfield",
+      "default": "300",
+      "required": false
+    },
+    {
+      "name": "overwriteExisting",
+      "title": "Overwrite Existing",
+      "description": "Overwrite files if they already exist",
+      "type": "checkbox",
+      "default": false,
+      "label": "Overwrite existing files",
+      "required": false
+    },
+    {
+      "name": "enableDebugLogging",
+      "title": "Debug Logging",
+      "description": "Enable verbose debug logging",
+      "type": "checkbox",
+      "default": false,
+      "label": "Enable debug logging",
+      "required": false
     }
   ],
   "dependencies": {

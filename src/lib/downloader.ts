@@ -1,5 +1,12 @@
 import { spawn, ChildProcess } from "child_process";
-import { logDebug, logDownloadStart, logDownloadComplete, logDownloadError, logDownloadProgress } from "./logger";
+import {
+  logDebug,
+  logInfo,
+  logDownloadStart,
+  logDownloadComplete,
+  logDownloadError,
+  logDownloadProgress,
+} from "./logger";
 
 export interface DownloadOptions {
   url: string;
@@ -183,13 +190,15 @@ function parseCurlProgress(data: string): DownloadProgress | null {
   // or with --progress-bar:
   // #####                                                                     7.8%
 
-  // Look for percentage in the data
-  const percentMatch = data.match(/(\d+(?:\.\d+)?)\s*%/);
-  if (!percentMatch) {
+  // Look for percentage in the data - use matchAll to get ALL matches, then take the last one
+  const percentMatches = Array.from(data.matchAll(/(\d+(?:\.\d+)?)\s*%/g));
+  if (percentMatches.length === 0) {
     return null;
   }
 
-  const percent = parseFloat(percentMatch[1]);
+  // Take the LAST match (most recent progress)
+  const lastMatch = percentMatches[percentMatches.length - 1];
+  const percent = parseFloat(lastMatch[1]);
 
   // Try to extract bytes and speed from curl output
   // Format can be like: "  % Total    % Received % Xferd  Average Speed   Time"
@@ -267,4 +276,188 @@ function getErrorMessage(exitCode: number | null, httpCode: number, stderr: stri
       }
       return exitCode ? `Download failed (exit code ${exitCode})` : "Download failed";
   }
+}
+
+// Batch download types and functions
+
+export type DownloadStatus = "pending" | "downloading" | "completed" | "failed" | "cancelled";
+
+export interface BatchDownloadItem {
+  id: string;
+  url: string;
+  filename: string;
+  outputPath: string;
+  status: DownloadStatus;
+  progress: DownloadProgress;
+  error?: string;
+  result?: DownloadResult;
+}
+
+export interface BatchProgress {
+  items: BatchDownloadItem[];
+  completed: number;
+  failed: number;
+  total: number;
+}
+
+export type BatchProgressCallback = (progress: BatchProgress) => void;
+
+export interface BatchDownloadHandle {
+  promise: Promise<DownloadResult[]>;
+  cancel: () => void;
+  cancelItem: (id: string) => void;
+}
+
+export function downloadBatch(
+  items: Array<{ id: string; url: string; filename: string; outputPath: string; options?: Partial<DownloadOptions> }>,
+  maxConcurrent: number,
+  onProgress?: BatchProgressCallback,
+): BatchDownloadHandle {
+  const batchItems: BatchDownloadItem[] = items.map((item) => ({
+    id: item.id,
+    url: item.url,
+    filename: item.filename,
+    outputPath: item.outputPath,
+    status: "pending" as DownloadStatus,
+    progress: { percent: 0, bytesDownloaded: 0, totalBytes: 0, speed: 0, eta: 0 },
+  }));
+
+  const activeHandles = new Map<string, DownloadHandle>();
+  let cancelled = false;
+
+  logInfo("Batch download started", { totalItems: items.length, maxConcurrent });
+
+  const emitProgress = () => {
+    if (onProgress) {
+      const completed = batchItems.filter((i) => i.status === "completed").length;
+      const failed = batchItems.filter((i) => i.status === "failed" || i.status === "cancelled").length;
+      onProgress({
+        items: [...batchItems],
+        completed,
+        failed,
+        total: batchItems.length,
+      });
+    }
+  };
+
+  const results: DownloadResult[] = [];
+  let currentIndex = 0;
+
+  const startNext = async (): Promise<void> => {
+    if (cancelled || currentIndex >= batchItems.length) {
+      return;
+    }
+
+    const itemIndex = currentIndex++;
+    const item = batchItems[itemIndex];
+    const originalItem = items[itemIndex];
+
+    item.status = "downloading";
+    emitProgress();
+
+    const handle = downloadFile(
+      {
+        url: item.url,
+        outputPath: item.outputPath,
+        ...originalItem.options,
+      },
+      (progress) => {
+        item.progress = progress;
+        emitProgress();
+      },
+    );
+
+    activeHandles.set(item.id, handle);
+
+    try {
+      const result = await handle.promise;
+      item.result = result;
+
+      if (result.success) {
+        item.status = "completed";
+      } else if (result.error === "Download cancelled") {
+        item.status = "cancelled";
+        item.error = result.error;
+      } else {
+        item.status = "failed";
+        item.error = result.error;
+      }
+
+      results.push(result);
+    } catch (error) {
+      item.status = "failed";
+      item.error = error instanceof Error ? error.message : "Unknown error";
+      results.push({
+        success: false,
+        url: item.url,
+        error: item.error,
+      });
+    } finally {
+      activeHandles.delete(item.id);
+      emitProgress();
+
+      // Start next download if available
+      if (!cancelled && currentIndex < batchItems.length) {
+        await startNext();
+      }
+    }
+  };
+
+  const runBatch = async (): Promise<DownloadResult[]> => {
+    const activePromises: Promise<void>[] = [];
+
+    // Start initial batch of concurrent downloads
+    const initialBatch = Math.min(maxConcurrent, batchItems.length);
+    for (let i = 0; i < initialBatch; i++) {
+      activePromises.push(startNext());
+    }
+
+    // Wait for all downloads to complete
+    await Promise.all(activePromises);
+
+    // Wait for any remaining active downloads
+    while (activeHandles.size > 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    logInfo("Batch download completed", {
+      total: results.length,
+      successful: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+    });
+
+    return results;
+  };
+
+  const promise = runBatch();
+
+  const cancel = () => {
+    cancelled = true;
+    for (const [, handle] of activeHandles) {
+      handle.cancel();
+    }
+    // Mark pending items as cancelled
+    for (const item of batchItems) {
+      if (item.status === "pending") {
+        item.status = "cancelled";
+        item.error = "Download cancelled";
+      }
+    }
+    emitProgress();
+  };
+
+  const cancelItem = (id: string) => {
+    const handle = activeHandles.get(id);
+    if (handle) {
+      handle.cancel();
+    }
+    const item = batchItems.find((i) => i.id === id);
+    if (item && item.status === "pending") {
+      item.status = "cancelled";
+      item.error = "Download cancelled";
+      emitProgress();
+    }
+  };
+
+  return { promise, cancel, cancelItem };
 }

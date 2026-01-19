@@ -9,6 +9,7 @@ export interface Preferences {
   defaultTimeout: number;
   overwriteExisting: boolean;
   enableDebugLogging: boolean;
+  maxParallelDownloads: number;
 }
 
 let cachedPreferences: Preferences | null = null;
@@ -24,6 +25,7 @@ export function getPreferences(): Preferences {
     defaultTimeout?: string;
     overwriteExisting?: boolean;
     enableDebugLogging?: boolean;
+    maxParallelDownloads?: string;
   }>();
 
   // Resolve output directory with fallback
@@ -43,12 +45,27 @@ export function getPreferences(): Preferences {
     }
   }
 
+  // Parse max parallel downloads with validation
+  let maxParallelDownloads = 3;
+  if (raw.maxParallelDownloads) {
+    const parsed = parseInt(raw.maxParallelDownloads, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      logWarn("Invalid maxParallelDownloads value, using default", {
+        provided: raw.maxParallelDownloads,
+        default: 3,
+      });
+    } else {
+      maxParallelDownloads = Math.min(parsed, 10); // Cap at 10 to be reasonable
+    }
+  }
+
   cachedPreferences = {
     outputDirectory,
     followRedirects: raw.followRedirects ?? true,
     defaultTimeout,
     overwriteExisting: raw.overwriteExisting ?? false,
     enableDebugLogging: raw.enableDebugLogging ?? false,
+    maxParallelDownloads,
   };
 
   logDebug("Preferences loaded", cachedPreferences);

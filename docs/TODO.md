@@ -77,27 +77,27 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ---
 
-## Phase 2: Batch Downloads
+## Phase 2: Batch Downloads ✅
 
 **Goal:** Download multiple URLs with list view progress.
 
 ### 2.1 Package Updates
 
-- [ ] Add `download-batch` command to `package.json` (mode: view)
-- [ ] Add `maxParallelDownloads` preference (default 3)
+- [x] Add `download-batch` command to `package.json` (mode: view)
+- [x] Add `maxParallelDownloads` preference (default 3)
 
 ### 2.2 Batch Downloader
 
-- [ ] Extend `src/lib/downloader.ts`
+- [x] Extend `src/lib/downloader.ts`
   - `BatchProgressCallback` type with per-item progress
   - `downloadBatch(items, onProgress)` with concurrency control
   - Track per-item progress, speed, and ETA
   - Track overall progress across all items
-  - Support pause/resume/cancel per item
+  - Support cancel per item (pause/resume deferred to Phase 7)
 
 ### 2.3 Batch Command
 
-- [ ] Create `src/download-batch.tsx`
+- [x] Create `src/download-batch.tsx`
   - Form view: textarea for URLs (one per line)
   - Parse and validate URLs on submit
   - List view showing download items with:
@@ -105,7 +105,7 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
     - Progress percentage or bytes ("2.3 MB / 5.1 MB")
     - Download speed ("1.2 MB/s") while active
     - ETA while downloading
-  - Actions: Pause, Resume, Cancel, Retry failed, Open file, Reveal in Finder
+  - Actions: Cancel, Retry failed, Open file, Reveal in Finder (Pause/Resume deferred to Phase 7)
 
 ### 2.4 Testing
 
@@ -314,6 +314,15 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 - [ ] Merge chunks on completion
 - [ ] Requires aria2c or custom implementation
 
+### 8.4 Cloud Storage URL Handling
+
+- [ ] Google Drive: Convert share URLs to direct download URLs (`/uc?export=download&id=FILE_ID`)
+- [ ] Dropbox: Convert share URLs to direct download (`?dl=1` parameter)
+- [ ] OneDrive: Handle share links and convert to direct download
+- [ ] iCloud: Handle public share links
+- [ ] Box: Handle shared link format
+- [ ] Detect cloud storage URLs and apply appropriate transformations
+
 ---
 
 ## Implementation Order Summary
@@ -333,5 +342,5 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ## Current Status
 
-**Phase:** Phase 1 complete
-**Next Step:** Phase 1.6 – Manual testing, then Phase 2
+**Phase:** Phase 2 complete
+**Next Step:** Phase 2.4 – Manual testing, then Phase 3

@@ -19,7 +19,7 @@
       "name": "download",
       "title": "Download",
       "subtitle": "Fetch",
-      "description": "Download files from the web.",
+      "description": "Download a single file from a URL.",
       "mode": "no-view",
       "arguments": [
         {
@@ -29,6 +29,13 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "download-batch",
+      "title": "Download Batch",
+      "subtitle": "Fetch",
+      "description": "Download multiple files from a list of URLs.",
+      "mode": "view"
     }
   ],
   "preferences": [
@@ -73,6 +80,14 @@
       "type": "checkbox",
       "default": false,
       "label": "Enable debug logging",
+      "required": false
+    },
+    {
+      "name": "maxParallelDownloads",
+      "title": "Max Parallel Downloads",
+      "description": "Maximum number of concurrent downloads for batch operations",
+      "type": "textfield",
+      "default": "3",
       "required": false
     }
   ],

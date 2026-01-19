@@ -1,3 +1,3 @@
 # Fetch
 
-Download a file from a URL.
+Download files from the web with Raycast.

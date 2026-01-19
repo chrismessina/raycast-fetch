@@ -2,8 +2,8 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "fetch",
   "title": "Fetch",
-  "description": "Download a file from a URL.",
-  "icon": "extension-icon.png",
+  "description": "Download files from the web.",
+  "icon": "fetch-icon.png",
   "author": "chrismessina",
   "platforms": [
     "macOS",
@@ -19,7 +19,7 @@
       "name": "download",
       "title": "Download",
       "subtitle": "Fetch",
-      "description": "Download a file from a URL.",
+      "description": "Download files from the web.",
       "mode": "no-view"
     }
   ],

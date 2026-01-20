@@ -3,6 +3,81 @@ import { spawn } from "child_process";
 import { basename, extname, join } from "path";
 import { logDebug, logWarn, logInfo } from "./logger";
 
+// URL extraction patterns
+const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+
+export interface ExtractedUrl {
+  url: string;
+  label?: string;
+  source: "markdown" | "plain";
+}
+
+/**
+ * Extract URLs from mixed text input.
+ * Handles:
+ * - Markdown link syntax [text](url)
+ * - Plain URLs in text
+ * - Deduplicates results
+ */
+export function extractUrlsFromText(text: string): ExtractedUrl[] {
+  const results: ExtractedUrl[] = [];
+  const seenUrls = new Set<string>();
+
+  // First, extract markdown links and track their positions
+  const markdownMatches: { start: number; end: number; url: string; label: string }[] = [];
+  let match: RegExpExecArray | null;
+
+  // Reset regex state
+  MARKDOWN_LINK_REGEX.lastIndex = 0;
+  while ((match = MARKDOWN_LINK_REGEX.exec(text)) !== null) {
+    const label = match[1];
+    const url = match[2].trim();
+
+    if (isValidUrl(url) && !seenUrls.has(url)) {
+      seenUrls.add(url);
+      results.push({ url, label: label || undefined, source: "markdown" });
+      markdownMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        url,
+        label,
+      });
+    }
+  }
+
+  // Extract plain URLs, excluding those already found in markdown links
+  URL_REGEX.lastIndex = 0;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    const url = match[0].trim();
+    const matchStart = match.index;
+    const matchEnd = matchStart + match[0].length;
+
+    // Check if this URL is inside a markdown link
+    const isInsideMarkdown = markdownMatches.some((md) => matchStart >= md.start && matchEnd <= md.end);
+
+    if (!isInsideMarkdown && isValidUrl(url) && !seenUrls.has(url)) {
+      seenUrls.add(url);
+      results.push({ url, source: "plain" });
+    }
+  }
+
+  logDebug("Extracted URLs from text", {
+    totalFound: results.length,
+    markdownLinks: results.filter((r) => r.source === "markdown").length,
+    plainUrls: results.filter((r) => r.source === "plain").length,
+  });
+
+  return results;
+}
+
+/**
+ * Simple extraction that returns just the URL strings.
+ */
+export function extractUrlStringsFromText(text: string): string[] {
+  return extractUrlsFromText(text).map((r) => r.url);
+}
+
 // Common MIME type to file extension mapping
 const MIME_TO_EXTENSION: Record<string, string> = {
   // Text
@@ -169,11 +244,11 @@ export function ensureExtension(filename: string, contentType?: string): string 
 export function isValidUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    const isValid = parsed.protocol === "http:" || parsed.protocol === "https:";
-    if (!isValid) {
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       logWarn("Invalid URL protocol", { url, protocol: parsed.protocol });
+      return false;
     }
-    return isValid;
+    return true;
   } catch {
     logWarn("Invalid URL format", { url });
     return false;

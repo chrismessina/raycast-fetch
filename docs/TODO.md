@@ -115,33 +115,36 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ---
 
-## Phase 3: URL Extraction
+## Phase 3: URL Extraction ✅
 
-**Goal:** Extract and download URLs from arbitrary text.
+**Goal:** Smart URL extraction integrated into batch download command.
 
-### 3.1 Package Updates
+### 3.1 URL Extraction Utility
 
-- [ ] Add `download-extract` command to `package.json` (mode: view)
-
-### 3.2 URL Extraction Utility
-
-- [ ] Add to `src/lib/url-utils.ts`
-  - `extractUrlsFromText(text: string): string[]`
+- [x] Add to `src/lib/url-utils.ts`
+  - `extractUrlsFromText(text: string): ExtractedUrl[]` - with source tracking
+  - `extractUrlStringsFromText(text: string): string[]` - simple string extraction
+  - Markdown link syntax `[text](url)` detection
+  - Plain URL detection in mixed text
   - Regex-based extraction with deduplication
 
-### 3.3 Extract Command
+### 3.2 Batch Download Integration
 
-- [ ] Create `src/download-extract.tsx`
-  - Form view: textarea for arbitrary text
-  - List view: extracted URLs with selection checkboxes
-  - Action: Download selected → batch download flow
-  - Show count of URLs found
+- [x] Update `src/download-batch.tsx`
+  - Use `extractUrlStringsFromText()` for smart input parsing
+  - Handle mixed input (plain URLs, markdown links, arbitrary text)
+  - Updated form placeholder and info text
+
+### 3.3 Code Organization
+
+- [x] Extract `DownloadListView` to `src/views/download-list-view.tsx`
+- [x] Create `src/actions/download-item-actions.tsx` for centralized actions
 
 ### 3.4 Testing
 
-- [ ] Manual test: paste HTML with embedded URLs
 - [ ] Manual test: paste markdown with links
 - [ ] Manual test: paste plain text with URLs
+- [ ] Manual test: mixed input (URLs + markdown + text)
 
 ---
 
@@ -209,57 +212,51 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ---
 
-## Phase 6: Download History & Persistence
+## Phase 6: Download History & Persistence ✅
 
 **Goal:** Persistent download history with full lifecycle management.
 
 ### 6.1 History Module
 
-- [ ] Create `src/lib/history.ts`
-  - `HistoryEntry` interface with status, progress, speed, timestamps
-  - `getHistory()` – load all entries from LocalStorage
-  - `addHistoryEntry()` – create new entry
-  - `updateHistoryEntry()` – update status/progress
-  - `removeHistoryEntry()` – delete single entry
+- [x] Create `src/lib/history.ts`
+  - `DownloadHistoryItem` interface with status, bytes, timestamps
+  - `getDownloadHistory()` – load all entries from LocalStorage
+  - `addToHistory()` – create new entry
+  - `addBatchToHistory()` – add multiple entries at once
+  - `removeFromHistory()` – delete single entry
   - `clearHistory()` – delete all entries
-  - `pruneHistory()` – remove old entries based on retention policy
-  - Log CRUD operations, pruning, LocalStorage errors, history size on load
+  - Max 100 items with automatic pruning
 
 ### 6.2 History Command
 
-- [ ] Add `download-history` command to `package.json` (mode: view)
-- [ ] Create `src/download-history.tsx`
+- [x] Add `download-history` command to `package.json` (mode: view)
+- [x] Create `src/download-history.tsx`
   - List view sorted by most recent
-  - Per-item display: filename, URL, status icon, progress, speed, timestamp
-  - Actions vary by status:
-    - Pending: Start, Remove, Copy URL
-    - Downloading: Pause, Cancel, Copy URL
-    - Paused: Resume, Cancel, Remove, Copy URL
-    - Completed: Open, Reveal, Re-download, Remove, Copy URL
-    - Failed: Retry, Remove, Copy URL, Copy Error
-  - Keyboard shortcuts: Enter (primary), ⌘⏎ (reveal), ⌘C (copy), ⌘⌫ (remove)
+  - Per-item display: filename, URL, status icon, size, relative timestamp
+  - Actions:
+    - Completed: Open, Reveal in Finder, Copy URL, Copy Path, Remove
+    - Failed: Copy URL, Remove
+  - Clear All History action
+  - Keyboard shortcuts: ⌘⏎ (reveal), ⌘C (copy URL), ⌘⇧C (copy path)
 
 ### 6.3 History Integration
 
+- [x] Update `download-batch.tsx` to record history entries
 - [ ] Update `download.ts` to record history entries
-- [ ] Update `download-batch.tsx` to record history entries
-- [ ] Update `download-extract.tsx` to record history entries
-- [ ] Update `download-sequential.tsx` to record history entries
+- [ ] Update `download-sequential.tsx` to record history entries (when implemented)
+
+### 6.4 Future Enhancements
+
 - [ ] Add `enableHistory` preference (default: true)
 - [ ] Add `historyMaxItems` preference (default: 100)
-
-### 6.4 History Preferences
-
-- [ ] Add preferences to `package.json`:
-  - `enableHistory` (checkbox, default true)
-  - `historyMaxItems` (textfield, default 100)
+- [ ] Add re-download action for completed items
+- [ ] Add retry action for failed items from history
 
 ### 6.5 Testing
 
 - [ ] Manual test: history persists across extension reloads
-- [ ] Manual test: pause/resume from history view
-- [ ] Manual test: retry failed download
-- [ ] Manual test: history pruning works correctly
+- [ ] Manual test: remove single item from history
+- [ ] Manual test: clear all history
 
 ---
 
@@ -342,5 +339,5 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
 
 ## Current Status
 
-**Phase:** Phase 2 complete
-**Next Step:** Phase 2.4 – Manual testing, then Phase 3
+**Phase:** Phase 3 & 6 complete
+**Next Step:** Phase 4 – Sequential downloads, or Phase 5 – Advanced features

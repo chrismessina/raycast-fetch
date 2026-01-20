@@ -36,6 +36,13 @@
       "subtitle": "Fetch",
       "description": "Download multiple files from a list of URLs.",
       "mode": "view"
+    },
+    {
+      "name": "download-history",
+      "title": "Download History",
+      "subtitle": "Fetch",
+      "description": "View download history.",
+      "mode": "view"
     }
   ],
   "preferences": [

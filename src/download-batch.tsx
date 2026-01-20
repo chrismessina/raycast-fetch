@@ -1,10 +1,17 @@
 import { useState, useCallback } from "react";
-import { Form, ActionPanel, Action, List, Icon, Color, showToast, Toast, open } from "@raycast/api";
+import { Form, ActionPanel, Action, Icon, showToast, Toast } from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
-import { isValidUrl, extractFilename, generateUniqueFilename, fetchHeadInfo, ensureExtension } from "./lib/url-utils";
+import {
+  extractUrlStringsFromText,
+  extractFilename,
+  generateUniqueFilename,
+  fetchHeadInfo,
+  ensureExtension,
+} from "./lib/url-utils";
 import { downloadBatch, BatchDownloadItem, BatchProgress, BatchDownloadHandle, DownloadStatus } from "./lib/downloader";
-import { formatBytes, formatSpeed } from "./lib/progress";
 import { logInfo, logDebug } from "./lib/logger";
+import { DownloadListView } from "./views/download-list-view";
+import { addBatchToHistory } from "./lib/history";
 
 interface FormValues {
   urls: string;
@@ -16,115 +23,6 @@ interface PreparedItem {
   url: string;
   filename: string;
   outputPath: string;
-}
-
-function getStatusIcon(status: DownloadStatus): { source: Icon; tintColor: Color } {
-  switch (status) {
-    case "pending":
-      return { source: Icon.Clock, tintColor: Color.SecondaryText };
-    case "downloading":
-      return { source: Icon.Download, tintColor: Color.Blue };
-    case "completed":
-      return { source: Icon.CheckCircle, tintColor: Color.Green };
-    case "failed":
-      return { source: Icon.XMarkCircle, tintColor: Color.Red };
-    case "cancelled":
-      return { source: Icon.MinusCircle, tintColor: Color.Orange };
-  }
-}
-
-function getStatusText(item: BatchDownloadItem): string {
-  switch (item.status) {
-    case "pending":
-      return "Pending";
-    case "downloading":
-      if (item.progress.percent > 0) {
-        return `${Math.round(item.progress.percent)}%`;
-      }
-      return "Starting...";
-    case "completed":
-      return item.result?.bytesDownloaded ? formatBytes(item.result.bytesDownloaded) : "Completed";
-    case "failed":
-      return item.error || "Failed";
-    case "cancelled":
-      return "Cancelled";
-  }
-}
-
-function DownloadListView({
-  items,
-  batchHandle,
-  onRetry,
-}: {
-  items: BatchDownloadItem[];
-  batchHandle: BatchDownloadHandle | null;
-  onRetry: (item: BatchDownloadItem) => void;
-}) {
-  const completedCount = items.filter((i) => i.status === "completed").length;
-  const failedCount = items.filter((i) => i.status === "failed" || i.status === "cancelled").length;
-  const totalCount = items.length;
-
-  return (
-    <List navigationTitle="Batch Download" searchBarPlaceholder="Filter downloads...">
-      <List.Section
-        title="Downloads"
-        subtitle={`${completedCount} completed, ${failedCount} failed, ${totalCount} total`}
-      >
-        {items.map((item) => (
-          <List.Item
-            key={item.id}
-            title={item.filename}
-            subtitle={item.url}
-            icon={getStatusIcon(item.status)}
-            accessories={[
-              ...(item.status === "downloading" && item.progress.speed > 0
-                ? [{ text: formatSpeed(item.progress.speed) }]
-                : []),
-              { text: getStatusText(item) },
-            ]}
-            actions={
-              <ActionPanel>
-                {item.status === "completed" && item.outputPath && (
-                  <>
-                    <Action title="Open File" icon={Icon.Document} onAction={() => open(item.outputPath)} />
-                    <Action
-                      title="Reveal in Finder"
-                      icon={Icon.Finder}
-                      shortcut={{ modifiers: ["cmd"], key: "return" }}
-                      onAction={() => open(item.outputPath, "Finder")}
-                    />
-                  </>
-                )}
-                {item.status === "failed" && (
-                  <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => onRetry(item)} />
-                )}
-                {item.status === "downloading" && batchHandle && (
-                  <Action
-                    title="Cancel"
-                    icon={Icon.XMarkCircle}
-                    style={Action.Style.Destructive}
-                    onAction={() => batchHandle.cancelItem(item.id)}
-                  />
-                )}
-                <Action.CopyToClipboard
-                  title="Copy URL"
-                  content={item.url}
-                  shortcut={{ modifiers: ["cmd"], key: "c" }}
-                />
-                {item.status === "failed" && item.error && (
-                  <Action.CopyToClipboard
-                    title="Copy Error"
-                    content={item.error}
-                    shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-                  />
-                )}
-              </ActionPanel>
-            }
-          />
-        ))}
-      </List.Section>
-    </List>
-  );
 }
 
 export default function Command() {
@@ -163,37 +61,14 @@ export default function Command() {
 
   const handleSubmit = useCallback(
     async (values: FormValues) => {
-      const lines = values.urls
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-
-      // Validate URLs
-      const validUrls: string[] = [];
-      const invalidUrls: string[] = [];
-
-      for (const line of lines) {
-        if (isValidUrl(line)) {
-          validUrls.push(line);
-        } else {
-          invalidUrls.push(line);
-        }
-      }
-
-      if (invalidUrls.length > 0) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Invalid URLs",
-          message: `${invalidUrls.length} invalid URL(s) found`,
-        });
-        return;
-      }
+      // Extract URLs from mixed input (handles markdown links and plain URLs)
+      const validUrls = extractUrlStringsFromText(values.urls);
 
       if (validUrls.length === 0) {
         await showToast({
           style: Toast.Style.Failure,
-          title: "No URLs",
-          message: "Please enter at least one valid URL",
+          title: "No URLs Found",
+          message: "No valid URLs found in input. Supports plain URLs and markdown links.",
         });
         return;
       }
@@ -240,13 +115,33 @@ export default function Command() {
 
       setBatchHandle(handle);
 
-      // Wait for completion
-      await handle.promise;
+      // Wait for completion and get final results
+      const finalResult = await handle.promise;
+
+      // Save completed/failed items to history
+      const historyItems = finalResult.items
+        .filter(
+          (item): item is BatchDownloadItem & { status: "completed" | "failed" } =>
+            item.status === "completed" || item.status === "failed",
+        )
+        .map((item) => ({
+          id: item.id,
+          url: item.url,
+          filename: item.filename,
+          outputPath: item.outputPath,
+          status: item.status,
+          bytesDownloaded: item.result?.bytesDownloaded,
+          error: item.error,
+        }));
+
+      if (historyItems.length > 0) {
+        addBatchToHistory(historyItems);
+      }
 
       await showToast({
         style: Toast.Style.Success,
         title: "Batch Download Complete",
-        message: `${initialItems.length} files processed`,
+        message: `${finalResult.items.length} files processed`,
       });
     },
     [prepareItems, preferences],
@@ -293,6 +188,16 @@ export default function Command() {
         },
       );
 
+      // Only set the batch handle if no other downloads are still in progress
+      // This prevents overwriting the original batch handle during active downloads
+      setDownloadItems((current) => {
+        const hasActiveDownloads = current.some((i) => i.id !== item.id && i.status === "downloading");
+        if (!hasActiveDownloads) {
+          setBatchHandle(handle);
+        }
+        return current;
+      });
+
       await handle.promise;
     },
     [preferences],
@@ -311,7 +216,12 @@ export default function Command() {
         </ActionPanel>
       }
     >
-      <Form.TextArea id="urls" title="URLs" placeholder="Enter URLs, one per line..." info="Enter one URL per line." />
+      <Form.TextArea
+        id="urls"
+        title="URLs"
+        placeholder="Enter URLs, one per line, or paste text containing URLs..."
+        info="Supports plain URLs and markdown links [text](url). URLs are automatically extracted from mixed text."
+      />
       <Form.FilePicker
         id="outputDirectory"
         title="Output Directory"

@@ -303,7 +303,7 @@ export interface BatchProgress {
 export type BatchProgressCallback = (progress: BatchProgress) => void;
 
 export interface BatchDownloadHandle {
-  promise: Promise<DownloadResult[]>;
+  promise: Promise<BatchProgress>;
   cancel: () => void;
   cancelItem: (id: string) => void;
 }
@@ -403,7 +403,7 @@ export function downloadBatch(
     }
   };
 
-  const runBatch = async (): Promise<DownloadResult[]> => {
+  const runBatch = async (): Promise<BatchProgress> => {
     const activePromises: Promise<void>[] = [];
 
     // Start initial batch of concurrent downloads
@@ -420,13 +420,21 @@ export function downloadBatch(
       await new Promise((r) => setTimeout(r, 100));
     }
 
+    const completed = batchItems.filter((i) => i.status === "completed").length;
+    const failed = batchItems.filter((i) => i.status === "failed" || i.status === "cancelled").length;
+
     logInfo("Batch download completed", {
-      total: results.length,
-      successful: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
+      total: batchItems.length,
+      successful: completed,
+      failed,
     });
 
-    return results;
+    return {
+      items: [...batchItems],
+      completed,
+      failed,
+      total: batchItems.length,
+    };
   };
 
   const promise = runBatch();

@@ -171,7 +171,14 @@ Phased implementation plan for the Raycast Fetch extension. Each phase builds on
     - End number
     - Preview of generated URLs
   - Validation: ensure pattern contains placeholder
+  - Validation: ensure start and end numbers are valid and incremental
+  - Validation: ensure end number is greater than start number
+  - Validation: ensure start and end numbers are within reasonable range
+  - Validation: ensure pattern is a valid URL
   - Submit → batch download flow
+  - If any URLs fail, show HUD error message and continue with rest of sequential downloads
+  - Allow user to stop the download process with a keyboard shortcut (Cmd+.)
+  - Use `download-list-view.tsx` for batch download UI
 
 ### 4.4 Testing
 

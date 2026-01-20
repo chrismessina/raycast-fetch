@@ -43,6 +43,13 @@
       "subtitle": "Fetch",
       "description": "View download history.",
       "mode": "view"
+    },
+    {
+      "name": "download-sequential",
+      "title": "Download Sequential",
+      "subtitle": "Fetch",
+      "description": "Download numbered sequences from URL patterns (e.g., image_{n}.jpg).",
+      "mode": "view"
     }
   ],
   "preferences": [

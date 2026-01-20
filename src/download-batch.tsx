@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Form, ActionPanel, Action, Icon, showToast, Toast } from "@raycast/api";
+import { useState, useCallback, useEffect } from "react";
+import { Form, ActionPanel, Action, Icon, showToast, Toast, LaunchProps } from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
 import {
   extractUrlStringsFromText,
@@ -7,6 +7,7 @@ import {
   generateUniqueFilename,
   fetchHeadInfo,
   ensureExtension,
+  expandAllRangeUrls,
 } from "./lib/url-utils";
 import { downloadBatch, BatchDownloadItem, BatchProgress, BatchDownloadHandle, DownloadStatus } from "./lib/downloader";
 import { logInfo, logDebug } from "./lib/logger";
@@ -25,12 +26,17 @@ interface PreparedItem {
   outputPath: string;
 }
 
-export default function Command() {
+interface LaunchContext {
+  urls?: string[];
+}
+
+export default function Command(props: LaunchProps<{ launchContext?: LaunchContext }>) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadItems, setDownloadItems] = useState<BatchDownloadItem[]>([]);
   const [batchHandle, setBatchHandle] = useState<BatchDownloadHandle | null>(null);
 
   const preferences = getPreferences();
+  const launchContext = props.launchContext;
 
   const prepareItems = useCallback(
     async (urls: string[], outputDirectory: string): Promise<PreparedItem[]> => {
@@ -59,29 +65,24 @@ export default function Command() {
     [preferences],
   );
 
-  const handleSubmit = useCallback(
-    async (values: FormValues) => {
-      // Extract URLs from mixed input (handles markdown links and plain URLs)
-      const validUrls = extractUrlStringsFromText(values.urls);
-
-      if (validUrls.length === 0) {
+  // Shared function to start downloads from a list of URLs
+  const startDownloads = useCallback(
+    async (urls: string[], outputDirectory: string) => {
+      if (urls.length === 0) {
         await showToast({
           style: Toast.Style.Failure,
           title: "No URLs Found",
-          message: "No valid URLs found in input. Supports plain URLs and markdown links.",
+          message: "No valid URLs found in input.",
         });
         return;
       }
 
-      // Get output directory from form or fall back to preference
-      const outputDirectory = values.outputDirectory?.[0] || preferences.outputDirectory;
-
-      logInfo("Batch download initiated", { urlCount: validUrls.length, outputDirectory });
+      logInfo("Batch download initiated", { urlCount: urls.length, outputDirectory });
 
       setIsDownloading(true);
 
       // Prepare items with filenames
-      const preparedItems = await prepareItems(validUrls, outputDirectory);
+      const preparedItems = await prepareItems(urls, outputDirectory);
 
       // Initialize download items for display
       const initialItems: BatchDownloadItem[] = preparedItems.map((item) => ({
@@ -135,13 +136,41 @@ export default function Command() {
         await addBatchToHistory(historyItems);
       }
 
+      const completedCount = finalResult.items.filter((i) => i.status === "completed").length;
+      const failedCount = finalResult.items.filter((i) => i.status === "failed").length;
+
       await showToast({
-        style: Toast.Style.Success,
+        style: failedCount > 0 ? Toast.Style.Failure : Toast.Style.Success,
         title: "Batch Download Complete",
-        message: `${finalResult.items.length} files processed`,
+        message:
+          failedCount > 0 ? `${completedCount} succeeded, ${failedCount} failed` : `${completedCount} files downloaded`,
       });
     },
     [prepareItems, preferences],
+  );
+
+  // Handle launch context (URLs passed from another command)
+  useEffect(() => {
+    if (launchContext?.urls && launchContext.urls.length > 0) {
+      logInfo("Batch download launched with context", { urlCount: launchContext.urls.length });
+      startDownloads(launchContext.urls, preferences.outputDirectory);
+    }
+  }, [launchContext, preferences.outputDirectory, startDownloads]);
+
+  const handleSubmit = useCallback(
+    async (values: FormValues) => {
+      // Extract URLs from mixed input (handles markdown links, plain URLs, and range patterns)
+      const extractedUrls = extractUrlStringsFromText(values.urls);
+
+      // Expand any range patterns (e.g., file[001-025].zip)
+      const expandedUrls = expandAllRangeUrls(extractedUrls);
+
+      // Get output directory from form or fall back to preference
+      const outputDirectory = values.outputDirectory?.[0] || preferences.outputDirectory;
+
+      await startDownloads(expandedUrls, outputDirectory);
+    },
+    [startDownloads, preferences.outputDirectory],
   );
 
   const handleRetry = useCallback(
@@ -217,7 +246,7 @@ export default function Command() {
         id="urls"
         title="URLs"
         placeholder="Enter URLs, one per line, or paste text containing URLs..."
-        info="Supports plain URLs and markdown links [text](url). URLs are automatically extracted from mixed text."
+        info="Supports plain URLs, markdown links, and range patterns like file[001-025].zip"
       />
       <Form.FilePicker
         id="outputDirectory"

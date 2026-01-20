@@ -1,6 +1,15 @@
-import { LaunchProps, Clipboard } from "@raycast/api";
+import { LaunchProps, Clipboard, launchCommand, LaunchType } from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
-import { isValidUrl, extractFilename, generateUniqueFilename, fetchHeadInfo, ensureExtension } from "./lib/url-utils";
+import {
+  isValidUrl,
+  extractFilename,
+  generateUniqueFilename,
+  fetchHeadInfo,
+  ensureExtension,
+  hasRangePattern,
+  expandRangeUrl,
+  getRangeInfo,
+} from "./lib/url-utils";
 import { downloadFile } from "./lib/downloader";
 import {
   showDownloadStarted,
@@ -34,7 +43,28 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
 
   logInfo("Download command invoked", { url, source: props.arguments.url ? "argument" : "clipboard" });
 
-  // Validate URL
+  // Check for range pattern (e.g., https://example.com/file[001-025].zip)
+  if (hasRangePattern(url)) {
+    const rangeInfo = getRangeInfo(url);
+    logInfo("Range pattern detected, launching batch download", {
+      url,
+      count: rangeInfo?.count,
+      start: rangeInfo?.start,
+      end: rangeInfo?.end,
+    });
+
+    // Expand the range and pass to batch download
+    const expandedUrls = expandRangeUrl(url);
+
+    await launchCommand({
+      name: "download-batch",
+      type: LaunchType.UserInitiated,
+      context: { urls: expandedUrls },
+    });
+    return;
+  }
+
+  // Validate URL (single URL, no range pattern)
   if (!isValidUrl(url)) {
     await showValidationError(`Invalid URL: ${url}`);
     return;

@@ -230,15 +230,17 @@ export function ensureExtension(filename: string, contentType?: string): string 
   }
 
   // Try to add extension from Content-Type
-  if (contentType) {
-    const ext = getExtensionFromContentType(contentType);
-    if (ext) {
-      logInfo("Appending extension from Content-Type", { filename, contentType, extension: ext });
-      return filename + ext;
-    }
+  if (!contentType) {
+    return filename;
   }
 
-  return filename;
+  const ext = getExtensionFromContentType(contentType);
+  if (!ext) {
+    return filename;
+  }
+
+  logInfo("Appending extension from Content-Type", { filename, contentType, extension: ext });
+  return filename + ext;
 }
 
 export function isValidUrl(url: string): boolean {

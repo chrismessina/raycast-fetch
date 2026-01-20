@@ -120,22 +120,19 @@ export default function Command() {
 
       // Save completed/failed items to history
       const historyItems = finalResult.items
-        .filter(
-          (item): item is BatchDownloadItem & { status: "completed" | "failed" } =>
-            item.status === "completed" || item.status === "failed",
-        )
+        .filter((item) => item.status === "completed" || item.status === "failed")
         .map((item) => ({
           id: item.id,
           url: item.url,
           filename: item.filename,
           outputPath: item.outputPath,
-          status: item.status,
+          status: item.status as "completed" | "failed",
           bytesDownloaded: item.result?.bytesDownloaded,
           error: item.error,
         }));
 
       if (historyItems.length > 0) {
-        addBatchToHistory(historyItems);
+        await addBatchToHistory(historyItems);
       }
 
       await showToast({

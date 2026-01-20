@@ -93,17 +93,8 @@ export default function Command() {
     [loadHistory],
   );
 
-  const { completedCount, failedCount } = history.reduce(
-    (acc, item) => {
-      if (item.status === "completed") {
-        acc.completedCount++;
-      } else {
-        acc.failedCount++;
-      }
-      return acc;
-    },
-    { completedCount: 0, failedCount: 0 },
-  );
+  const completedCount = history.filter((item) => item.status === "completed").length;
+  const failedCount = history.length - completedCount;
 
   return (
     <List isLoading={isLoading} navigationTitle="Download History" searchBarPlaceholder="Search history...">

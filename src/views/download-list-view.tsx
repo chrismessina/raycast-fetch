@@ -49,17 +49,8 @@ export function DownloadListView({
   onRetry,
   navigationTitle = "Batch Download",
 }: DownloadListViewProps) {
-  const { completedCount, failedCount } = items.reduce(
-    (acc, item) => {
-      if (item.status === "completed") {
-        acc.completedCount++;
-      } else if (item.status === "failed" || item.status === "cancelled") {
-        acc.failedCount++;
-      }
-      return acc;
-    },
-    { completedCount: 0, failedCount: 0 },
-  );
+  const completedCount = items.filter((item) => item.status === "completed").length;
+  const failedCount = items.filter((item) => item.status === "failed" || item.status === "cancelled").length;
 
   return (
     <List navigationTitle={navigationTitle} searchBarPlaceholder="Filter downloads...">

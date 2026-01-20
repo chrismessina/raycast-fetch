@@ -95,7 +95,8 @@ export async function clearHistoryByAge(minutes: number): Promise<number> {
   try {
     const history = await getDownloadHistory();
     const cutoff = Date.now() - minutes * 60 * 1000;
-    const filtered = history.filter((item) => item.timestamp < cutoff);
+    // Keep items older than the cutoff (remove recent items within the time window)
+    const filtered = history.filter((item) => item.timestamp <= cutoff);
     const removedCount = history.length - filtered.length;
     await LocalStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
     logInfo("Cleared history by age", { minutes, removedCount });

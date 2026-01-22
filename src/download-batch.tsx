@@ -28,6 +28,7 @@ interface PreparedItem {
 
 interface LaunchContext {
   urls?: string[];
+  outputDirectory?: string;
 }
 
 export default function Command(props: LaunchProps<{ launchContext?: LaunchContext }>) {
@@ -152,8 +153,9 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   // Handle launch context (URLs passed from another command)
   useEffect(() => {
     if (launchContext?.urls && launchContext.urls.length > 0) {
-      logInfo("Batch download launched with context", { urlCount: launchContext.urls.length });
-      startDownloads(launchContext.urls, preferences.outputDirectory);
+      const outputDir = launchContext.outputDirectory || preferences.outputDirectory;
+      logInfo("Batch download launched with context", { urlCount: launchContext.urls.length, outputDirectory: outputDir });
+      startDownloads(launchContext.urls, outputDir);
     }
   }, [launchContext, preferences.outputDirectory, startDownloads]);
 

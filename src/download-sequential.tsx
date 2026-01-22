@@ -88,18 +88,22 @@ export default function Command() {
       return;
     }
 
+    // Get output directory from form or fall back to preference
+    const outputDirectory = values.outputDirectory?.[0] || preferences.outputDirectory;
+
     logInfo("Sequential download initiated", {
       pattern: trimmedPattern,
       urlCount: urls.length,
+      outputDirectory,
     });
 
     // Launch batch download with the expanded URLs
     await launchCommand({
       name: "download-batch",
       type: LaunchType.UserInitiated,
-      context: { urls },
+      context: { urls, outputDirectory },
     });
-  }, []);
+  }, [preferences.outputDirectory]);
 
   const paddingHint = validation.valid && validation.padding ? ` (${validation.padding}-digit zero-padding)` : "";
 

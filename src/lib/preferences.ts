@@ -68,7 +68,7 @@ export function getPreferences(): Preferences {
     maxParallelDownloads,
   };
 
-  logDebug("Preferences loaded", cachedPreferences);
+  logDebug("Preferences loaded", { ...cachedPreferences });
 
   return cachedPreferences;
 }

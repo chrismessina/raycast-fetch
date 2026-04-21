@@ -152,7 +152,7 @@ Decrementing
 page[10-1].pdf → page10.pdf, page9.pdf, ...`}
       />
 
-      {validation.valid && validation.count > 1 && (
+      {validation.valid && (validation.count ?? 0) > 1 && (
         <Form.Description
           title="Preview"
           text={`${validation.count} URLs will be downloaded${paddingHint}:\n\n${previewUrls.join("\n")}`}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Form, ActionPanel, Action, Icon, showToast, Toast, LaunchProps } from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
 import {
@@ -35,6 +35,13 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadItems, setDownloadItems] = useState<BatchDownloadItem[]>([]);
   const [batchHandle, setBatchHandle] = useState<BatchDownloadHandle | null>(null);
+
+  // Ref mirror of downloadItems so handleRetry can inspect current state
+  // without abusing setState's updater callback for side effects.
+  const downloadItemsRef = useRef<BatchDownloadItem[]>([]);
+  useEffect(() => {
+    downloadItemsRef.current = downloadItems;
+  }, [downloadItems]);
 
   const preferences = getPreferences();
   const launchContext = props.launchContext;
@@ -154,7 +161,10 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   useEffect(() => {
     if (launchContext?.urls && launchContext.urls.length > 0) {
       const outputDir = launchContext.outputDirectory || preferences.outputDirectory;
-      logInfo("Batch download launched with context", { urlCount: launchContext.urls.length, outputDirectory: outputDir });
+      logInfo("Batch download launched with context", {
+        urlCount: launchContext.urls.length,
+        outputDirectory: outputDir,
+      });
       startDownloads(launchContext.urls, outputDir);
     }
   }, [launchContext, preferences.outputDirectory, startDownloads]);
@@ -216,15 +226,11 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         },
       );
 
-      // Only set the batch handle if no other downloads are still in progress
-      // This prevents overwriting the original batch handle during active downloads
-      setDownloadItems((current) => {
-        const hasActiveDownloads = current.some((i) => i.id !== item.id && i.status === "downloading");
-        if (!hasActiveDownloads) {
-          setBatchHandle(handle);
-        }
-        return current;
-      });
+      // Avoid overwriting the original batch handle while other items are still active.
+      const hasActiveDownloads = downloadItemsRef.current.some((i) => i.id !== item.id && i.status === "downloading");
+      if (!hasActiveDownloads) {
+        setBatchHandle(handle);
+      }
 
       await handle.promise;
     },

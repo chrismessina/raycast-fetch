@@ -114,6 +114,11 @@ export function downloadFile(options: DownloadOptions, onProgress?: ProgressCall
           onProgress(progress);
         }
       }
+      // Trim buffer to avoid O(n²) regex scans over a growing string.
+      // Keep only the tail so we never split a partial percentage number mid-stream.
+      if (stderrBuffer.length > 4096) {
+        stderrBuffer = stderrBuffer.slice(-1024);
+      }
     });
 
     let stdoutData = "";
@@ -134,12 +139,19 @@ export function downloadFile(options: DownloadOptions, onProgress?: ProgressCall
         return;
       }
 
-      // Parse the write-out data from stdout
+      // Parse the write-out data from stdout. Expected shape: three lines —
+      // size_download, speed_download, http_code. If stdout is empty or short
+      // (some curl error paths), fall back to trusting the exit code.
       const lines = stdoutData.trim().split("\n").filter(Boolean);
-      const bytesDownloaded = lines.length > 0 ? parseInt(lines[lines.length - 3] || "0", 10) : 0;
-      const httpCode = lines.length > 0 ? parseInt(lines[lines.length - 1] || "0", 10) : 0;
+      const hasWriteOut = lines.length >= 3;
+      const bytesDownloaded = hasWriteOut ? parseInt(lines[lines.length - 3], 10) : NaN;
+      const httpCode = hasWriteOut ? parseInt(lines[lines.length - 1], 10) : NaN;
 
-      if (code === 0 && httpCode >= 200 && httpCode < 400) {
+      // Treat as success when exit code is 0 AND either the http_code indicates
+      // success OR we never got write-out (empty stdout from curl but clean exit).
+      const httpOk = !isNaN(httpCode) ? httpCode >= 200 && httpCode < 400 : true;
+
+      if (code === 0 && httpOk) {
         const result: DownloadResult = {
           success: true,
           url,

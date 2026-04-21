@@ -2,8 +2,9 @@ import { showHUD, showToast, Toast, open } from "@raycast/api";
 import { logDebug } from "./logger";
 import { DownloadProgress } from "./downloader";
 
-let lastUpdateTime = 0;
 const UPDATE_THROTTLE_MS = 250;
+// Per-filename throttle so concurrent downloads don't clobber each other's HUD cadence.
+const lastUpdateTimeByKey = new Map<string, number>();
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -38,12 +39,13 @@ export function formatEta(seconds: number): string {
 
 export async function showDownloadProgress(filename: string, progress: DownloadProgress): Promise<void> {
   const now = Date.now();
+  const last = lastUpdateTimeByKey.get(filename) ?? 0;
 
   // Throttle updates to avoid flickering
-  if (now - lastUpdateTime < UPDATE_THROTTLE_MS) {
+  if (now - last < UPDATE_THROTTLE_MS) {
     return;
   }
-  lastUpdateTime = now;
+  lastUpdateTimeByKey.set(filename, now);
 
   const percent = Math.round(progress.percent);
   let message = `Downloading ${filename}... ${percent}%`;
@@ -65,11 +67,13 @@ export async function showDownloadProgress(filename: string, progress: DownloadP
 
 export async function showDownloadStarted(filename: string): Promise<void> {
   logDebug("HUD download started", { filename });
+  lastUpdateTimeByKey.delete(filename);
   await showHUD(`Downloading ${filename}...`);
 }
 
 export async function showDownloadComplete(filename: string, path: string): Promise<void> {
   logDebug("HUD download complete", { filename, path });
+  lastUpdateTimeByKey.delete(filename);
 
   await showToast({
     style: Toast.Style.Success,
@@ -92,6 +96,7 @@ export async function showDownloadComplete(filename: string, path: string): Prom
 
 export async function showDownloadError(filename: string, error: string): Promise<void> {
   logDebug("HUD download error", { filename, error });
+  lastUpdateTimeByKey.delete(filename);
 
   await showToast({
     style: Toast.Style.Failure,

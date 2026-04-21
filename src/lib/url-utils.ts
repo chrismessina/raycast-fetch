@@ -6,6 +6,8 @@ import { logDebug, logWarn, logInfo } from "./logger";
 // URL extraction patterns
 const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+// Trailing characters that are almost always prose punctuation, not part of the URL.
+const URL_TRAILING_PUNCT = /[.,;:!?)'"\]>]+$/;
 
 export interface ExtractedUrl {
   url: string;
@@ -49,9 +51,10 @@ export function extractUrlsFromText(text: string): ExtractedUrl[] {
   // Extract plain URLs, excluding those already found in markdown links
   URL_REGEX.lastIndex = 0;
   while ((match = URL_REGEX.exec(text)) !== null) {
-    const url = match[0].trim();
+    const rawMatch = match[0];
+    const url = rawMatch.replace(URL_TRAILING_PUNCT, "").trim();
     const matchStart = match.index;
-    const matchEnd = matchStart + match[0].length;
+    const matchEnd = matchStart + rawMatch.length;
 
     // Check if this URL is inside a markdown link
     const isInsideMarkdown = markdownMatches.some((md) => matchStart >= md.start && matchEnd <= md.end);
@@ -179,27 +182,32 @@ export async function fetchHeadInfo(url: string, timeout = 10): Promise<HeadResp
 
       const result: HeadResponse = {};
 
-      // Parse Content-Disposition header
-      const dispositionMatch = output.match(/content-disposition:\s*(.+)/i);
+      // With -L, curl prints one header block per redirect hop. We want the last block.
+      // The -w suffix is appended after the final block, so split on "HTTP/" and take the last segment.
+      const segments = output.split(/(?=^HTTP\/)/m);
+      const finalBlock = segments.length > 0 ? segments[segments.length - 1] : output;
+
+      // Parse Content-Disposition from final response only
+      const dispositionMatch = finalBlock.match(/content-disposition:\s*(.+)/i);
       if (dispositionMatch) {
         result.contentDisposition = dispositionMatch[1].trim();
       }
 
-      // Parse Content-Length header
-      const lengthMatch = output.match(/content-length:\s*(\d+)/i);
+      // Parse Content-Length from final response only
+      const lengthMatch = finalBlock.match(/content-length:\s*(\d+)/i);
       if (lengthMatch) {
         result.contentLength = parseInt(lengthMatch[1], 10);
       }
 
-      // Parse Content-Type from -w output (last line)
+      // Parse Content-Type from -w output (last line of overall output)
       const lines = output.trim().split("\n");
       const lastLine = lines[lines.length - 1];
       if (lastLine && !lastLine.includes(":")) {
         // This is the content_type from -w output
         result.contentType = lastLine.split(";")[0].trim();
       } else {
-        // Fallback to header parsing
-        const typeMatch = output.match(/content-type:\s*([^;\r\n]+)/i);
+        // Fallback to header parsing on final block
+        const typeMatch = finalBlock.match(/content-type:\s*([^;\r\n]+)/i);
         if (typeMatch) {
           result.contentType = typeMatch[1].trim();
         }
@@ -241,6 +249,14 @@ export function ensureExtension(filename: string, contentType?: string): string 
 
   logInfo("Appending extension from Content-Type", { filename, contentType, extension: ext });
   return filename + ext;
+}
+
+/**
+ * Trim whitespace and trailing prose punctuation from a URL.
+ * Clipboard/argument URLs often include a trailing `.` or `)` from surrounding text.
+ */
+export function cleanUrl(url: string): string {
+  return url.trim().replace(URL_TRAILING_PUNCT, "");
 }
 
 export function isValidUrl(url: string): boolean {

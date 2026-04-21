@@ -1,20 +1,30 @@
 # Fetch Extension – Technical Specification
 
+> **Historical design document.** This spec captured the original design intent.
+> The actual shipped extension has diverged:
+> - `download-extract` and `download-sequential` are not separate commands.
+>   URL extraction and range-pattern (`[start-end]`) expansion are both handled
+>   inline by `download` and `download-batch`.
+> - Preferences `enableHistory`, `historyMaxItems`, and `autoResume` were never
+>   implemented. `enableDebugLogging` ships instead.
+> - Pause/resume is not implemented.
+>
+> Treat this file as design notes, not ground truth. When it disagrees with the
+> code, the code wins.
+
 ## Overview
 
-A Raycast extension providing multiple download commands for fetching files from URLs. Supports single downloads, batch operations, URL extraction from text, and sequential masked downloads with progress feedback.
+A Raycast extension providing download commands for fetching files from URLs. Supports single downloads, batch operations, and curl-style `[start-end]` range patterns for numbered sequences.
 
 ---
 
 ## Commands
 
-| Command               | Mode    | Description                                                       |
-| --------------------- | ------- | ----------------------------------------------------------------- |
-| `download`            | no-view | Download a single file from URL (clipboard or argument)           |
-| `download-batch`      | view    | Download multiple URLs from a list input                          |
-| `download-extract`    | view    | Extract URLs from pasted text and download selected               |
-| `download-sequential` | view    | Download numbered sequences (e.g., `img_001.jpg` → `img_100.jpg`) |
-| `download-history`    | view    | View and manage download history with retry/resume actions        |
+| Command            | Mode    | Description                                                  |
+| ------------------ | ------- | ------------------------------------------------------------ |
+| `download`         | no-view | Download a single file from URL (clipboard or argument)      |
+| `download-batch`   | view    | Download multiple URLs (supports markdown links and ranges)  |
+| `download-history` | view    | View, retry, and manage download history                     |
 
 ---
 

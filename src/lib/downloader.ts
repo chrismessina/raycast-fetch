@@ -14,7 +14,6 @@ export interface DownloadOptions {
   headers?: Record<string, string>;
   followRedirects?: boolean;
   timeout?: number;
-  overwrite?: boolean;
 }
 
 export interface DownloadProgress {
@@ -31,7 +30,6 @@ export interface DownloadResult {
   outputPath?: string;
   error?: string;
   bytesDownloaded?: number;
-  totalBytes?: number;
   duration?: number;
 }
 
@@ -157,7 +155,6 @@ export function downloadFile(options: DownloadOptions, onProgress?: ProgressCall
           url,
           outputPath,
           bytesDownloaded: isNaN(bytesDownloaded) ? lastProgress.bytesDownloaded : bytesDownloaded,
-          totalBytes: lastProgress.totalBytes,
           duration,
         };
         logDownloadComplete(url, result);

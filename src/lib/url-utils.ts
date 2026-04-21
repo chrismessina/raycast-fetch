@@ -9,76 +9,44 @@ const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 // Trailing characters that are almost always prose punctuation, not part of the URL.
 const URL_TRAILING_PUNCT = /[.,;:!?)'"\]>]+$/;
 
-export interface ExtractedUrl {
-  url: string;
-  label?: string;
-  source: "markdown" | "plain";
-}
-
 /**
- * Extract URLs from mixed text input.
- * Handles:
- * - Markdown link syntax [text](url)
- * - Plain URLs in text
- * - Deduplicates results
+ * Extract URLs from mixed text input — handles markdown `[text](url)` links and
+ * plain URLs embedded in prose. Deduplicates by URL and strips trailing
+ * punctuation that got swept up by the plain-URL regex.
  */
-export function extractUrlsFromText(text: string): ExtractedUrl[] {
-  const results: ExtractedUrl[] = [];
-  const seenUrls = new Set<string>();
-
-  // First, extract markdown links and track their positions
-  const markdownMatches: { start: number; end: number; url: string; label: string }[] = [];
+export function extractUrlStringsFromText(text: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const markdownRanges: { start: number; end: number }[] = [];
   let match: RegExpExecArray | null;
 
-  // Reset regex state
+  // Markdown links first — they always win over plain-URL matches inside their range.
   MARKDOWN_LINK_REGEX.lastIndex = 0;
   while ((match = MARKDOWN_LINK_REGEX.exec(text)) !== null) {
-    const label = match[1];
     const url = match[2].trim();
-
-    if (isValidUrl(url) && !seenUrls.has(url)) {
-      seenUrls.add(url);
-      results.push({ url, label: label || undefined, source: "markdown" });
-      markdownMatches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        url,
-        label,
-      });
+    markdownRanges.push({ start: match.index, end: match.index + match[0].length });
+    if (isValidUrl(url) && !seen.has(url)) {
+      seen.add(url);
+      urls.push(url);
     }
   }
 
-  // Extract plain URLs, excluding those already found in markdown links
   URL_REGEX.lastIndex = 0;
   while ((match = URL_REGEX.exec(text)) !== null) {
     const rawMatch = match[0];
     const url = rawMatch.replace(URL_TRAILING_PUNCT, "").trim();
-    const matchStart = match.index;
-    const matchEnd = matchStart + rawMatch.length;
+    const start = match.index;
+    const end = start + rawMatch.length;
 
-    // Check if this URL is inside a markdown link
-    const isInsideMarkdown = markdownMatches.some((md) => matchStart >= md.start && matchEnd <= md.end);
-
-    if (!isInsideMarkdown && isValidUrl(url) && !seenUrls.has(url)) {
-      seenUrls.add(url);
-      results.push({ url, source: "plain" });
+    const insideMarkdown = markdownRanges.some((md) => start >= md.start && end <= md.end);
+    if (!insideMarkdown && isValidUrl(url) && !seen.has(url)) {
+      seen.add(url);
+      urls.push(url);
     }
   }
 
-  logDebug("Extracted URLs from text", {
-    totalFound: results.length,
-    markdownLinks: results.filter((r) => r.source === "markdown").length,
-    plainUrls: results.filter((r) => r.source === "plain").length,
-  });
-
-  return results;
-}
-
-/**
- * Simple extraction that returns just the URL strings.
- */
-export function extractUrlStringsFromText(text: string): string[] {
-  return extractUrlsFromText(text).map((r) => r.url);
+  logDebug("Extracted URLs from text", { count: urls.length });
+  return urls;
 }
 
 // Common MIME type to file extension mapping

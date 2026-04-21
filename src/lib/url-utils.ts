@@ -558,25 +558,9 @@ export function expandRangeUrl(url: string, maxUrls: number = 500): string[] {
 
 /**
  * Expand multiple URLs, handling range patterns in any of them.
- * Useful for batch downloads where some URLs may have ranges.
- *
- * @param urls - Array of URLs, some possibly containing range patterns
- * @param maxUrlsPerRange - Maximum URLs per range pattern (default 500)
- * @returns Flattened array of all expanded URLs
  */
 export function expandAllRangeUrls(urls: string[], maxUrlsPerRange: number = 500): string[] {
-  const expanded: string[] = [];
-
-  for (const url of urls) {
-    expanded.push(...expandRangeUrl(url, maxUrlsPerRange));
-  }
-
-  logDebug("Expanded all range URLs", {
-    inputCount: urls.length,
-    outputCount: expanded.length,
-  });
-
-  return expanded;
+  return urls.flatMap((url) => expandRangeUrl(url, maxUrlsPerRange));
 }
 
 /**

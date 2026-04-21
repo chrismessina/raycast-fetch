@@ -1,9 +1,25 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { Form, ActionPanel, Action, Icon, showToast, Toast, LaunchProps } from "@raycast/api";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  Form,
+  ActionPanel,
+  Action,
+  Icon,
+  showToast,
+  Toast,
+  LaunchProps,
+  Clipboard,
+  BrowserExtension,
+} from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
-import { extractUrlStringsFromText, expandAllRangeUrls, resolveOutputPath } from "./lib/url-utils";
+import {
+  extractUrlStringsFromText,
+  expandAllRangeUrls,
+  resolveOutputPath,
+  hasRangePattern,
+  getRangeInfo,
+} from "./lib/url-utils";
 import { downloadBatch, BatchDownloadItem, BatchProgress, BatchDownloadHandle, DownloadStatus } from "./lib/downloader";
-import { logInfo, logDebug } from "./lib/logger";
+import { logInfo, logDebug, logWarn } from "./lib/logger";
 import { DownloadListView } from "./views/download-list-view";
 import { addBatchToHistory } from "./lib/history";
 
@@ -28,6 +44,7 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadItems, setDownloadItems] = useState<BatchDownloadItem[]>([]);
   const [batchHandle, setBatchHandle] = useState<BatchDownloadHandle | null>(null);
+  const [urlsInput, setUrlsInput] = useState("");
 
   // Ref mirror of downloadItems so handleRetry can inspect current state
   // without abusing setState's updater callback for side effects.
@@ -151,6 +168,21 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     }
   }, [launchContext, preferences.outputDirectory, startDownloads]);
 
+  // Pre-fill the URLs textarea from the clipboard when opened directly.
+  useEffect(() => {
+    if (launchContext?.urls) return;
+    let cancelled = false;
+    (async () => {
+      const text = (await Clipboard.readText())?.trim();
+      if (!cancelled && text && extractUrlStringsFromText(text).length > 0) {
+        setUrlsInput(text);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [launchContext]);
+
   const handleSubmit = useCallback(
     async (values: FormValues) => {
       // Extract URLs from mixed input (handles markdown links, plain URLs, and range patterns)
@@ -166,6 +198,31 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     },
     [startDownloads, preferences.outputDirectory],
   );
+
+  const handleImportBrowserTabs = useCallback(async () => {
+    try {
+      const tabs = await BrowserExtension.getTabs();
+      const urls = tabs.map((t) => t.url).filter((u): u is string => typeof u === "string" && u.length > 0);
+      if (urls.length === 0) {
+        await showToast({ style: Toast.Style.Failure, title: "No Browser Tabs", message: "No open tabs found." });
+        return;
+      }
+      const existing = urlsInput.trim();
+      setUrlsInput(existing ? `${existing}\n${urls.join("\n")}` : urls.join("\n"));
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Imported Browser Tabs",
+        message: `Added ${urls.length} ${urls.length === 1 ? "URL" : "URLs"}`,
+      });
+    } catch (error) {
+      logWarn("Browser tab import failed", { error: error instanceof Error ? error.message : String(error) });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Browser Extension Unavailable",
+        message: "Install the Raycast browser extension to use this feature.",
+      });
+    }
+  }, [urlsInput]);
 
   const handleRetry = useCallback(
     async (item: BatchDownloadItem) => {
@@ -219,6 +276,19 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     [preferences],
   );
 
+  // Live range preview: if the current input contains a range pattern and nothing else complicated,
+  // show the user what URLs will be generated so they can sanity-check before submitting.
+  const rangePreview = useMemo(() => {
+    const trimmed = urlsInput.trim();
+    if (!trimmed || !hasRangePattern(trimmed) || trimmed.includes("\n")) return null;
+    const info = getRangeInfo(trimmed);
+    if (!info) return null;
+    const padHint = info.padding > 0 ? ` (${info.padding}-digit padding)` : "";
+    const expanded = expandAllRangeUrls([trimmed], 500);
+    const preview = expanded.length <= 7 ? expanded : [...expanded.slice(0, 5), "…", ...expanded.slice(-2)];
+    return { count: info.count, padHint, preview };
+  }, [urlsInput]);
+
   if (isDownloading) {
     return <DownloadListView items={downloadItems} batchHandle={batchHandle} onRetry={handleRetry} />;
   }
@@ -229,6 +299,12 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Download All" icon={Icon.Download} onSubmit={handleSubmit} />
+          <Action
+            title="Import URLs from Browser Tabs"
+            icon={Icon.Globe}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "b" }}
+            onAction={handleImportBrowserTabs}
+          />
         </ActionPanel>
       }
     >
@@ -237,6 +313,8 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         title="URLs"
         placeholder="Enter URLs, one per line, or paste text containing URLs..."
         info="Supports plain URLs, markdown links, and range patterns like file[001-025].zip"
+        value={urlsInput}
+        onChange={setUrlsInput}
       />
       <Form.FilePicker
         id="outputDirectory"
@@ -246,6 +324,12 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         canChooseFiles={false}
         defaultValue={[preferences.outputDirectory]}
       />
+      {rangePreview && (
+        <Form.Description
+          title="Range Preview"
+          text={`${rangePreview.count} URLs will be generated${rangePreview.padHint}:\n\n${rangePreview.preview.join("\n")}`}
+        />
+      )}
     </Form>
   );
 }

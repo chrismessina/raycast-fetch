@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, open, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Icon, open, Keyboard, launchCommand, LaunchType } from "@raycast/api";
 import { DownloadHistoryItem } from "../lib/history";
 
 interface HistoryItemActionsProps {
@@ -9,6 +9,13 @@ interface HistoryItemActionsProps {
 }
 
 export function HistoryItemActions({ item, onRemove, onClearByAge, onClearAll }: HistoryItemActionsProps) {
+  const redownload = () =>
+    launchCommand({
+      name: "download",
+      type: LaunchType.UserInitiated,
+      arguments: { url: item.url },
+    });
+
   return (
     <ActionPanel>
       {item.status === "completed" && item.outputPath && (
@@ -22,12 +29,25 @@ export function HistoryItemActions({ item, onRemove, onClearByAge, onClearAll }:
           />
         </>
       )}
+      <Action
+        title={item.status === "failed" ? "Retry Download" : "Download Again"}
+        icon={item.status === "failed" ? Icon.ArrowClockwise : Icon.Download}
+        shortcut={{ modifiers: ["cmd"], key: "r" }}
+        onAction={redownload}
+      />
       <Action.CopyToClipboard title="Copy URL" content={item.url} shortcut={Keyboard.Shortcut.Common.Copy} />
       {item.outputPath && (
         <Action.CopyToClipboard
           title="Copy File Path"
           content={item.outputPath}
           shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+        />
+      )}
+      {item.status === "failed" && item.error && (
+        <Action.CopyToClipboard
+          title="Copy Error"
+          content={item.error}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
         />
       )}
       <Action

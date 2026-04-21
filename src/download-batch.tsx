@@ -1,14 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Form, ActionPanel, Action, Icon, showToast, Toast, LaunchProps } from "@raycast/api";
 import { getPreferences } from "./lib/preferences";
-import {
-  extractUrlStringsFromText,
-  extractFilename,
-  generateUniqueFilename,
-  fetchHeadInfo,
-  ensureExtension,
-  expandAllRangeUrls,
-} from "./lib/url-utils";
+import { extractUrlStringsFromText, expandAllRangeUrls, resolveOutputPath } from "./lib/url-utils";
 import { downloadBatch, BatchDownloadItem, BatchProgress, BatchDownloadHandle, DownloadStatus } from "./lib/downloader";
 import { logInfo, logDebug } from "./lib/logger";
 import { DownloadListView } from "./views/download-list-view";
@@ -53,24 +46,13 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
         const id = `download-${Date.now()}-${i}`;
-
-        // Fetch HEAD info to get Content-Type
-        const headInfo = await fetchHeadInfo(url);
-
-        // Extract and enhance filename
-        let filename = extractFilename(url, headInfo.contentDisposition);
-        filename = ensureExtension(filename, headInfo.contentType);
-
-        const outputPath = preferences.overwriteExisting
-          ? `${outputDirectory}/${filename}`
-          : generateUniqueFilename(outputDirectory, filename);
-
+        const { filename, outputPath } = await resolveOutputPath(url, outputDirectory, preferences.overwriteExisting);
         items.push({ id, url, filename, outputPath });
       }
 
       return items;
     },
-    [preferences],
+    [preferences.overwriteExisting],
   );
 
   // Shared function to start downloads from a list of URLs

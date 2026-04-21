@@ -1,11 +1,10 @@
 import { LaunchProps, Clipboard, launchCommand, LaunchType } from "@raycast/api";
+import { randomUUID } from "crypto";
 import { getPreferences } from "./lib/preferences";
 import {
   isValidUrl,
-  extractFilename,
-  generateUniqueFilename,
-  fetchHeadInfo,
-  ensureExtension,
+  cleanUrl,
+  resolveOutputPath,
   hasRangePattern,
   expandRangeUrl,
   getRangeInfo,
@@ -18,6 +17,7 @@ import {
   showDownloadError,
   showValidationError,
 } from "./lib/progress";
+import { addToHistory } from "./lib/history";
 import { logInfo, logDebug } from "./lib/logger";
 
 interface Arguments {
@@ -29,11 +29,13 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
 
   // Get URL from argument or clipboard
   let url = props.arguments.url?.trim();
+  let source: "argument" | "clipboard" = "argument";
 
   if (!url) {
     logDebug("No URL argument, checking clipboard");
     const clipboardText = await Clipboard.readText();
     url = clipboardText?.trim();
+    source = "clipboard";
   }
 
   if (!url) {
@@ -41,7 +43,10 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
     return;
   }
 
-  logInfo("Download command invoked", { url, source: props.arguments.url ? "argument" : "clipboard" });
+  // Strip trailing prose punctuation that often comes along from copy-paste.
+  url = cleanUrl(url);
+
+  logInfo("Download command invoked", { url, source });
 
   // Check for range pattern (e.g., https://example.com/file[001-025].zip)
   if (hasRangePattern(url)) {
@@ -70,18 +75,11 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
     return;
   }
 
-  // Fetch HEAD info to get Content-Type and Content-Disposition
-  const headInfo = await fetchHeadInfo(url);
-
-  // Extract filename (prefer Content-Disposition, then URL)
-  let filename = extractFilename(url, headInfo.contentDisposition);
-
-  // Ensure filename has an extension based on Content-Type
-  filename = ensureExtension(filename, headInfo.contentType);
-
-  const outputPath = preferences.overwriteExisting
-    ? `${preferences.outputDirectory}/${filename}`
-    : generateUniqueFilename(preferences.outputDirectory, filename);
+  const { filename, outputPath } = await resolveOutputPath(
+    url,
+    preferences.outputDirectory,
+    preferences.overwriteExisting,
+  );
 
   logDebug("Output path resolved", { filename, outputPath });
 
@@ -95,7 +93,6 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
       outputPath,
       followRedirects: preferences.followRedirects,
       timeout: preferences.defaultTimeout,
-      overwrite: preferences.overwriteExisting,
     },
     async (progress) => {
       await showDownloadProgress(filename, progress);
@@ -107,7 +104,23 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
 
   if (result.success) {
     await showDownloadComplete(filename, result.outputPath!);
+    await addToHistory({
+      id: randomUUID(),
+      url,
+      filename,
+      outputPath,
+      status: "completed",
+      bytesDownloaded: result.bytesDownloaded,
+    });
   } else {
     await showDownloadError(filename, result.error || "Unknown error");
+    await addToHistory({
+      id: randomUUID(),
+      url,
+      filename,
+      outputPath,
+      status: "failed",
+      error: result.error,
+    });
   }
 }

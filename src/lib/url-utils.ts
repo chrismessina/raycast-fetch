@@ -386,6 +386,29 @@ export function generateUniqueFilename(dir: string, name: string): string {
   return candidate;
 }
 
+/**
+ * Resolve a final output path for a URL: fetch HEAD metadata, extract a filename
+ * (prefers Content-Disposition, falls back to URL path), ensure it has an extension
+ * based on Content-Type, and either use the base path directly (overwrite) or
+ * generate a collision-free unique path.
+ *
+ * Shared by the single-download and batch-download flows.
+ */
+export async function resolveOutputPath(
+  url: string,
+  outputDirectory: string,
+  overwrite: boolean,
+): Promise<{ filename: string; outputPath: string }> {
+  const headInfo = await fetchHeadInfo(url);
+
+  let filename = extractFilename(url, headInfo.contentDisposition);
+  filename = ensureExtension(filename, headInfo.contentType);
+
+  const outputPath = overwrite ? join(outputDirectory, filename) : generateUniqueFilename(outputDirectory, filename);
+
+  return { filename, outputPath };
+}
+
 // Range URL pattern support (curl-style)
 // Supports [start-end] syntax, e.g., https://example.com/file[001-025].zip
 

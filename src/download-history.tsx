@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
-import { List, Icon, Color, Alert, confirmAlert, showToast, Toast } from "@raycast/api";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Color, confirmAlert, Icon, List, showToast, Toast } from "@raycast/api";
+import { HistoryItemActions } from "./actions/history-item-actions";
 import {
-  getDownloadHistory,
   clearHistory,
   clearHistoryByAge,
-  removeFromHistory,
   DownloadHistoryItem,
+  getDownloadHistory,
+  removeFromHistory,
 } from "./lib/history";
 import { formatBytes } from "./lib/progress";
-import { HistoryItemActions } from "./actions/history-item-actions";
 
 function getStatusIcon(status: "completed" | "failed"): { source: Icon; tintColor: Color } {
   return status === "completed"

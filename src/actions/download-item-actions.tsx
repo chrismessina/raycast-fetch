@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Icon, open } from "@raycast/api";
-import { BatchDownloadItem, BatchDownloadHandle } from "../lib/downloader";
+import { BatchDownloadHandle, BatchDownloadItem } from "../lib/downloader";
 
 interface DownloadItemActionsProps {
   item: BatchDownloadItem;

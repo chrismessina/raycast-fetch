@@ -1,27 +1,27 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Form,
-  ActionPanel,
   Action,
+  ActionPanel,
+  BrowserExtension,
+  Clipboard,
+  Form,
   Icon,
+  LaunchProps,
   showToast,
   Toast,
-  LaunchProps,
-  Clipboard,
-  BrowserExtension,
 } from "@raycast/api";
+import { BatchDownloadHandle, BatchDownloadItem, BatchProgress, downloadBatch, DownloadStatus } from "./lib/downloader";
+import { addBatchToHistory } from "./lib/history";
+import { logDebug, logInfo, logWarn } from "./lib/logger";
 import { getPreferences } from "./lib/preferences";
 import {
-  extractUrlStringsFromText,
   expandAllRangeUrls,
-  resolveOutputPath,
-  hasRangePattern,
+  extractUrlStringsFromText,
   getRangeInfo,
+  hasRangePattern,
+  resolveOutputPath,
 } from "./lib/url-utils";
-import { downloadBatch, BatchDownloadItem, BatchProgress, BatchDownloadHandle, DownloadStatus } from "./lib/downloader";
-import { logInfo, logDebug, logWarn } from "./lib/logger";
 import { DownloadListView } from "./views/download-list-view";
-import { addBatchToHistory } from "./lib/history";
 
 interface FormValues {
   urls: string;

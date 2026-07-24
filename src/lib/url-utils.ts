@@ -1,7 +1,7 @@
-import { existsSync } from "fs";
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import { basename, extname, join } from "path";
-import { logDebug, logWarn, logInfo } from "./logger";
+import { logDebug, logInfo, logWarn } from "./logger";
 
 // URL extraction patterns
 const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;

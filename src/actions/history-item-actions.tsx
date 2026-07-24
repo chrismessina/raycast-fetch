@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, open, Keyboard, launchCommand, LaunchType } from "@raycast/api";
+import { Action, ActionPanel, Icon, Keyboard, launchCommand, LaunchType, open } from "@raycast/api";
 import { DownloadHistoryItem } from "../lib/history";
 
 interface HistoryItemActionsProps {

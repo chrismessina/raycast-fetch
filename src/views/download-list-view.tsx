@@ -1,7 +1,7 @@
-import { List, Icon, Color } from "@raycast/api";
-import { BatchDownloadItem, BatchDownloadHandle, DownloadStatus } from "../lib/downloader";
-import { formatBytes, formatSpeed } from "../lib/progress";
+import { Color, Icon, List } from "@raycast/api";
 import { DownloadItemActions } from "../actions/download-item-actions";
+import { BatchDownloadHandle, BatchDownloadItem, DownloadStatus } from "../lib/downloader";
+import { formatBytes, formatSpeed } from "../lib/progress";
 
 function getStatusIcon(status: DownloadStatus): { source: Icon; tintColor: Color } {
   switch (status) {

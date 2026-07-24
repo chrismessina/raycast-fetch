@@ -1,24 +1,24 @@
-import { LaunchProps, Clipboard, launchCommand, LaunchType } from "@raycast/api";
 import { randomUUID } from "crypto";
+import { Clipboard, launchCommand, LaunchProps, LaunchType } from "@raycast/api";
+import { downloadFile } from "./lib/downloader";
+import { addToHistory } from "./lib/history";
+import { logDebug, logInfo } from "./lib/logger";
 import { getPreferences } from "./lib/preferences";
 import {
-  isValidUrl,
-  cleanUrl,
-  resolveOutputPath,
-  hasRangePattern,
-  expandRangeUrl,
-  getRangeInfo,
-} from "./lib/url-utils";
-import { downloadFile } from "./lib/downloader";
-import {
-  showDownloadStarted,
-  showDownloadProgress,
   showDownloadComplete,
   showDownloadError,
+  showDownloadProgress,
+  showDownloadStarted,
   showValidationError,
 } from "./lib/progress";
-import { addToHistory } from "./lib/history";
-import { logInfo, logDebug } from "./lib/logger";
+import {
+  cleanUrl,
+  expandRangeUrl,
+  getRangeInfo,
+  hasRangePattern,
+  isValidUrl,
+  resolveOutputPath,
+} from "./lib/url-utils";
 
 interface Arguments {
   url?: string;

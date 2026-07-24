@@ -1,6 +1,6 @@
-import { showHUD, showToast, Toast, open } from "@raycast/api";
-import { logDebug } from "./logger";
+import { open, showHUD, showToast, Toast } from "@raycast/api";
 import { DownloadProgress } from "./downloader";
+import { logDebug } from "./logger";
 
 const UPDATE_THROTTLE_MS = 250;
 // Per-filename throttle so concurrent downloads don't clobber each other's HUD cadence.

@@ -1,11 +1,11 @@
-import { spawn, ChildProcess } from "child_process";
+import { ChildProcess, spawn } from "child_process";
 import {
   logDebug,
-  logInfo,
-  logDownloadStart,
   logDownloadComplete,
   logDownloadError,
   logDownloadProgress,
+  logDownloadStart,
+  logInfo,
 } from "./logger";
 
 export interface DownloadOptions {

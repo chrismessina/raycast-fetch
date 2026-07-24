@@ -1,6 +1,6 @@
-import { getPreferenceValues } from "@raycast/api";
 import { homedir } from "os";
 import { join } from "path";
+import { getPreferenceValues } from "@raycast/api";
 import { logDebug, logWarn } from "./logger";
 
 export interface Preferences {

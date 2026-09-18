@@ -61,10 +61,7 @@ export function HistoryItemActions({ item, onRemove, onClearByAge, onClearAll }:
           <Action.CopyToClipboard
             title="Copy Error"
             content={item.error.message}
-            shortcut={{
-              macOS: { modifiers: ["cmd", "shift"], key: "e" },
-              Windows: { modifiers: ["ctrl", "shift"], key: "e" },
-            }}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
           />
         )}
       </ActionPanel.Section>
@@ -80,10 +77,7 @@ export function HistoryItemActions({ item, onRemove, onClearByAge, onClearAll }:
         <ActionPanel.Submenu
           title="Delete Recent Entries…"
           icon={Icon.Clock}
-          shortcut={{
-            macOS: { modifiers: ["cmd", "shift"], key: "x" },
-            Windows: { modifiers: ["ctrl", "shift"], key: "x" },
-          }}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
         >
           <Action title="Last 5 Minutes" icon={Icon.Clock} onAction={() => onClearByAge(5)} />
           <Action title="Last 15 Minutes" icon={Icon.Clock} onAction={() => onClearByAge(15)} />

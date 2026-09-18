@@ -74,13 +74,16 @@ export function DownloadListView({
     <>
       {/* One action, two phases: during preflight there is no batch handle to
           cancel yet, only the filename resolution. The two are mutually exclusive
-          — no rows exist while preparing — so they share the shortcut safely. */}
+          — no rows exist while preparing — so they share the shortcut safely.
+
+          The shortcut is ⌘⇧. rather than the more obvious ⌘. because ⌘. resolves
+          to Common.Pin, which this action is not. */}
       {cancelAll && (
         <Action
           title="Cancel All"
           icon={Icon.XMarkCircle}
           style={Action.Style.Destructive}
-          shortcut={{ macOS: { modifiers: ["cmd"], key: "." }, Windows: { modifiers: ["ctrl"], key: "." } }}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "." }}
           onAction={cancelAll}
         />
       )}

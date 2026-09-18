@@ -16,6 +16,7 @@ import {
 import {
   cleanUrl,
   expandRangeUrl,
+  extractUrlStringsFromText,
   getRangeInfo,
   hasRangePattern,
   isValidUrl,
@@ -32,13 +33,21 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments.
 
   if (!url) {
     logDebug("No URL argument, checking clipboard");
-    const clipboardText = await Clipboard.readText();
-    url = clipboardText?.trim();
-    source = "clipboard";
+    const clipboardText = (await Clipboard.readText())?.trim();
+    // The clipboard holds whatever was copied last — a shell command, a paragraph,
+    // a file path. Only adopt it when it actually contains a URL. Taking it blind
+    // reported "Invalid URL: cd /Users/… && npm install" for something the user
+    // never typed and could not act on. Same guard `download-batch` already uses,
+    // so prose with a link in it still works.
+    const fromClipboard = clipboardText ? extractUrlStringsFromText(clipboardText)[0] : undefined;
+    if (fromClipboard) {
+      url = fromClipboard;
+      source = "clipboard";
+    }
   }
 
   if (!url) {
-    await showValidationError("No URL provided. Pass a URL or copy one to clipboard.");
+    await showValidationError("No URL provided. Pass a URL as the argument, or copy one to the clipboard.");
     return;
   }
 

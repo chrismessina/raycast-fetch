@@ -64,7 +64,7 @@
 | Open File | `⌘ O` | Opens it in the default application |
 | Import URLs from Browser Tabs | `⌘ ⇧ B` | Appends every open tab to the batch form |
 | Retry | `⌘ R` | Re-runs a failed download |
-| Cancel / Cancel All | `⌘ ⌫` / `⌘ .` | Stops one download, or every running download |
+| Cancel / Cancel All | `⌃ X` / `⌘ ⇧ .` | Stops one download, or every running download |
 | Copy Error | `⌘ ⇧ E` | Copies the failure message |
 | Delete Entry | `⌃ X` | Removes a history entry — the downloaded file is left alone |
 
@@ -132,7 +132,6 @@ npm run dev
 | Package | Role |
 | --- | --- |
 | `@raycast/api` | Raycast extension primitives |
-| `@raycast/utils` | Higher-level Raycast utilities |
 | `@chrismessina/raycast-downloader` | Detached download runner, resume, failure classification |
 | `@chrismessina/raycast-kit` | Failure toasts with a Copy Error action, count formatting |
 | `@chrismessina/raycast-logger` | Logging gated on the Debug Logging preference |

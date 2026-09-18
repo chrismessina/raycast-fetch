@@ -42,10 +42,7 @@ export function DownloadItemActions({ item, batchHandle, onRetry, globalActions 
         <Action.CopyToClipboard
           title="Copy Error"
           content={item.error}
-          shortcut={{
-            macOS: { modifiers: ["cmd", "shift"], key: "e" },
-            Windows: { modifiers: ["ctrl", "shift"], key: "e" },
-          }}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
         />
       )}
       {globalActions}

@@ -70,8 +70,8 @@
     },
     {
       "name": "defaultTimeout",
-      "title": "Timeout",
-      "description": "Maximum seconds to wait for a download before giving up",
+      "title": "Stall Timeout",
+      "description": "Seconds with no data received before a download is abandoned",
       "type": "textfield",
       "default": "300",
       "required": false,
@@ -88,12 +88,12 @@
     },
     {
       "name": "verboseLogging",
-      "title": "Verbose Logging",
-      "description": "Log curl commands and download diagnostics to the console. Sensitive values are redacted.",
+      "title": "Debug Logging",
+      "label": "Enable extra diagnostics in the console",
+      "description": "Show detailed logs in the console for debugging.",
       "type": "checkbox",
-      "default": false,
-      "label": "Enable verbose logging",
-      "required": false
+      "required": false,
+      "default": false
     }
   ],
   "dependencies": {

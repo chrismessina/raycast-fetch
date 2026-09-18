@@ -1,7 +1,7 @@
 import { countOf } from "@chrismessina/raycast-kit";
 import { Action, ActionPanel, Color, Icon, Keyboard, List } from "@raycast/api";
 import { DownloadItemActions } from "../actions/download-item-actions";
-import { BatchDownloadHandle, BatchDownloadItem, DownloadStatus, tally } from "../lib/downloader";
+import { BatchControls, BatchDownloadItem, DownloadStatus, tally } from "../lib/downloader";
 import { formatBytes, formatSpeed } from "../lib/progress";
 
 function getStatusIcon(status: DownloadStatus): { source: Icon; tintColor: Color } {
@@ -39,7 +39,7 @@ function getStatusText(item: BatchDownloadItem): string {
 
 interface DownloadListViewProps {
   items: BatchDownloadItem[];
-  batchHandle: BatchDownloadHandle | null;
+  batchHandle: BatchControls | null;
   onRetry: (item: BatchDownloadItem) => void;
   /** Filenames are still being resolved — no rows exist yet. */
   isPreparing?: boolean;

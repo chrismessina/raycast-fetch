@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { releaseReservation } from "@chrismessina/raycast-downloader/paths";
+import { showError } from "@chrismessina/raycast-kit";
 import { Clipboard, launchCommand, LaunchProps, LaunchType } from "@raycast/api";
 import { downloadFile } from "./lib/downloader";
 import { addToHistory } from "./lib/history";
@@ -73,11 +74,25 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments.
     return;
   }
 
-  const { filename, outputPath } = await resolveOutputPath(
-    url,
-    preferences.outputDirectory,
-    preferences.overwriteExisting,
-  );
+  // Resolving the output path reserves a `.part` and can fail outright — an
+  // unwritable or missing output directory throws here, BEFORE the first toast
+  // exists. Without this catch a no-view command just exits: no error, no Copy
+  // Error action, nothing on screen at all.
+  let filename: string;
+  let outputPath: string;
+  try {
+    ({ filename, outputPath } = await resolveOutputPath(
+      url,
+      preferences.outputDirectory,
+      preferences.overwriteExisting,
+    ));
+  } catch (error) {
+    await showError(error, {
+      title: "Could Not Start Download",
+      message: `Check that ${preferences.outputDirectory} exists and is writable.`,
+    });
+    return;
+  }
 
   logDebug("Output path resolved", { filename, outputPath });
 

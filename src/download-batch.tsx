@@ -12,7 +12,14 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { BatchDownloadHandle, BatchDownloadItem, BatchProgress, downloadBatch, DownloadStatus } from "./lib/downloader";
+import {
+  BatchControls,
+  BatchDownloadHandle,
+  BatchDownloadItem,
+  BatchProgress,
+  downloadBatch,
+  DownloadStatus,
+} from "./lib/downloader";
 import { addBatchToHistory } from "./lib/history";
 import { logDebug, logInfo, logWarn } from "./lib/logger";
 import { getPreferences } from "./lib/preferences";
@@ -42,15 +49,9 @@ interface LaunchContext {
   outputDirectory?: string;
 }
 
-/**
- * Thrown to unwind out of filename resolution when the user cancels the preflight.
- *
- * Carries the paths already reserved so they can be released — each resolved item
- * has created a zero-byte `<path>.part`, and leaving them behind permanently
- * shifts later downloads onto " (1)" names.
- */
+/** Thrown to unwind out of filename resolution when the user cancels the preflight. */
 class PreparationCancelled extends Error {
-  constructor(readonly reservedPaths: string[] = []) {
+  constructor() {
     super("Preparation cancelled");
     this.name = "PreparationCancelled";
   }
@@ -61,8 +62,34 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   const [isPreparing, setIsPreparing] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [downloadItems, setDownloadItems] = useState<BatchDownloadItem[]>([]);
-  const [batchHandle, setBatchHandle] = useState<BatchDownloadHandle | null>(null);
   const [urlsInput, setUrlsInput] = useState("");
+
+  // Every live batch — the original, plus any retry started while it was still
+  // running. The UI gets ONE fan-out over the whole set, because a retry that
+  // began alongside other downloads used to keep its handle to itself: Cancel All
+  // then stopped everything except the retry, which kept writing uncancellably.
+  const liveBatchesRef = useRef(new Set<BatchDownloadHandle>());
+  const [liveBatchCount, setLiveBatchCount] = useState(0);
+
+  const trackBatch = useCallback((handle: BatchDownloadHandle) => {
+    liveBatchesRef.current.add(handle);
+    setLiveBatchCount(liveBatchesRef.current.size);
+    return () => {
+      liveBatchesRef.current.delete(handle);
+      setLiveBatchCount(liveBatchesRef.current.size);
+    };
+  }, []);
+
+  const batchHandle = useMemo<BatchControls | null>(
+    () =>
+      liveBatchCount === 0
+        ? null
+        : {
+            cancel: () => liveBatchesRef.current.forEach((h) => h.cancel()),
+            cancelItem: (id: string) => liveBatchesRef.current.forEach((h) => h.cancelItem(id)),
+          },
+    [liveBatchCount],
+  );
 
   // Ref mirror of downloadItems so handleRetry can inspect current state
   // without abusing setState's updater callback for side effects.
@@ -88,36 +115,51 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       const startedAt = Date.now();
       let resolved = 0;
 
-      for (let offset = 0; offset < urls.length; offset += batchSize) {
-        if (prepareCancelledRef.current) {
-          throw new PreparationCancelled(items.filter(Boolean).map((i) => i.outputPath));
+      try {
+        for (let offset = 0; offset < urls.length; offset += batchSize) {
+          if (prepareCancelledRef.current) {
+            throw new PreparationCancelled();
+          }
+
+          const slice = urls.slice(offset, offset + batchSize);
+
+          // `allSettled`, not `all`: a sibling that resolves AFTER one of its wave
+          // rejects has still reserved a path on disk, and `Promise.all` would have
+          // unwound before that assignment landed — leaking the reservation.
+          const outcomes = await Promise.allSettled(
+            slice.map(async (url, sliceIndex) => {
+              const index = offset + sliceIndex;
+              const { filename, outputPath } = await resolveOutputPath(
+                url,
+                outputDirectory,
+                preferences.overwriteExisting,
+              );
+              items[index] = { id: `download-${startedAt}-${index}`, url, filename, outputPath };
+              resolved++;
+              onResolved(resolved);
+            }),
+          );
+
+          const rejected = outcomes.find((o) => o.status === "rejected");
+          if (rejected) throw rejected.reason;
         }
 
-        const slice = urls.slice(offset, offset + batchSize);
+        // Cancellation can land DURING the final wave: the wave resolves, the loop
+        // condition is already false, and control would return normally with a full
+        // item list — launching everything the user just cancelled.
+        if (prepareCancelledRef.current) {
+          throw new PreparationCancelled();
+        }
 
-        await Promise.all(
-          slice.map(async (url, sliceIndex) => {
-            const index = offset + sliceIndex;
-            const { filename, outputPath } = await resolveOutputPath(
-              url,
-              outputDirectory,
-              preferences.overwriteExisting,
-            );
-            items[index] = { id: `download-${startedAt}-${index}`, url, filename, outputPath };
-            resolved++;
-            onResolved(resolved);
-          }),
-        );
+        return items;
+      } catch (error) {
+        // ANY failure here — cancellation, an unwritable directory, a dead host —
+        // strands a zero-byte `<path>.part` for every URL that DID resolve, across
+        // every wave. Left behind, they push later downloads onto " (1)" names for
+        // files that were never written.
+        for (const item of items) if (item) releaseReservation(item.outputPath);
+        throw error;
       }
-
-      // Cancellation can land DURING the final wave: the wave resolves, the loop
-      // condition is already false, and control would return normally with a full
-      // item list — launching everything the user just cancelled.
-      if (prepareCancelledRef.current) {
-        throw new PreparationCancelled(items.filter(Boolean).map((i) => i.outputPath));
-      }
-
-      return items;
     },
     [preferences.overwriteExisting, preferences.maxParallelDownloads],
   );
@@ -155,8 +197,8 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         setIsDownloading(false);
         await preparingToast.hide();
 
+        // Reservations are already released by `prepareItems` on the way out.
         if (error instanceof PreparationCancelled) {
-          for (const path of error.reservedPaths) releaseReservation(path);
           await showToast({ style: Toast.Style.Success, title: "Cancelled" });
         } else {
           await showError(error, { title: "Could Not Prepare Downloads" });
@@ -197,10 +239,10 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         },
       );
 
-      setBatchHandle(handle);
+      const untrack = trackBatch(handle);
 
       // Wait for completion and get final results
-      const finalResult = await handle.promise;
+      const finalResult = await handle.promise.finally(untrack);
 
       // Save completed/failed items to history
       const historyItems = finalResult.items
@@ -367,13 +409,8 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
         },
       );
 
-      // Avoid overwriting the original batch handle while other items are still active.
-      const hasActiveDownloads = downloadItemsRef.current.some((i) => i.id !== item.id && i.status === "downloading");
-      if (!hasActiveDownloads) {
-        setBatchHandle(handle);
-      }
-
-      await handle.promise;
+      const untrack = trackBatch(handle);
+      await handle.promise.finally(untrack);
 
       // Re-offer the way back to the form once nothing else is still running.
       const stillActive = downloadItemsRef.current.some(
@@ -405,7 +442,10 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     setIsDownloading(false);
     setIsFinished(false);
     setDownloadItems([]);
-    setBatchHandle(null);
+    // Only reachable once the batch has settled, so every handle has already
+    // untracked itself — this is belt-and-braces against a stale Cancel All.
+    liveBatchesRef.current.clear();
+    setLiveBatchCount(0);
   }, []);
 
   const handleCancelPreparation = useCallback(() => {

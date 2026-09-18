@@ -13,9 +13,9 @@ compiled_raycast_rust
 # misc
 .DS_Store
 .claude
-/CLAUDE.md
 
-# Internal planning docs — design intent, not shipped documentation.
-# These describe commands and preferences that were folded in or never built,
-# so they only confuse a Store reviewer reading them as a spec.
-/docs
+# Internal planning docs — design intent, not shipped documentation. Kept under
+# .github/ because `ray publish` drops that whole directory, so nothing in here
+# can reach the public monorepo. (.gitignore alone would NOT achieve that —
+# `ray publish` reads no ignore file at all.)
+.github/.private

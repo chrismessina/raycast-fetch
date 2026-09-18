@@ -1,10 +1,10 @@
 import { ReactNode } from "react";
 import { Action, ActionPanel, Icon, Keyboard } from "@raycast/api";
-import { BatchDownloadHandle, BatchDownloadItem } from "../lib/downloader";
+import { BatchControls, BatchDownloadItem } from "../lib/downloader";
 
 interface DownloadItemActionsProps {
   item: BatchDownloadItem;
-  batchHandle: BatchDownloadHandle | null;
+  batchHandle: BatchControls | null;
   onRetry: (item: BatchDownloadItem) => void;
   /** Batch-wide actions (Cancel All / Start Over) shown in every item's panel. */
   globalActions?: ReactNode;

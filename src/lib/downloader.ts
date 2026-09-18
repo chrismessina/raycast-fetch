@@ -231,6 +231,15 @@ export interface BatchDownloadHandle {
   cancelItem: (id: string) => void;
 }
 
+/**
+ * What the UI needs from a running batch, minus the promise.
+ *
+ * Narrower than `BatchDownloadHandle` on purpose: a retry starts its own batch, so
+ * the views have to be handed a fan-out over SEVERAL live batches rather than one
+ * handle. There is no single promise to hand over in that case.
+ */
+export type BatchControls = Pick<BatchDownloadHandle, "cancel" | "cancelItem">;
+
 export function downloadBatch(
   items: Array<{ id: string; url: string; filename: string; outputPath: string; options?: Partial<DownloadOptions> }>,
   maxConcurrent: number,

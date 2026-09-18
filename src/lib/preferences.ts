@@ -3,30 +3,28 @@ import { join } from "path";
 import { getPreferenceValues } from "@raycast/api";
 import { logDebug, logWarn } from "./logger";
 
-export interface Preferences {
+/**
+ * Preferences after parsing and validation. Distinct from the ambient
+ * `Preferences` type generated into `raycast-env.d.ts`, where the numeric
+ * fields arrive as raw strings.
+ */
+export interface ResolvedPreferences {
   outputDirectory: string;
   followRedirects: boolean;
   defaultTimeout: number;
   overwriteExisting: boolean;
-  enableDebugLogging: boolean;
+  verboseLogging: boolean;
   maxParallelDownloads: number;
 }
 
-let cachedPreferences: Preferences | null = null;
+let cachedPreferences: ResolvedPreferences | null = null;
 
-export function getPreferences(): Preferences {
+export function getPreferences(): ResolvedPreferences {
   if (cachedPreferences) {
     return cachedPreferences;
   }
 
-  const raw = getPreferenceValues<{
-    outputDirectory?: string;
-    followRedirects?: boolean;
-    defaultTimeout?: string;
-    overwriteExisting?: boolean;
-    enableDebugLogging?: boolean;
-    maxParallelDownloads?: string;
-  }>();
+  const raw = getPreferenceValues<Preferences>();
 
   // Resolve output directory with fallback
   let outputDirectory = raw.outputDirectory || join(homedir(), "Downloads");
@@ -64,7 +62,7 @@ export function getPreferences(): Preferences {
     followRedirects: raw.followRedirects ?? true,
     defaultTimeout,
     overwriteExisting: raw.overwriteExisting ?? false,
-    enableDebugLogging: raw.enableDebugLogging ?? false,
+    verboseLogging: raw.verboseLogging ?? false,
     maxParallelDownloads,
   };
 

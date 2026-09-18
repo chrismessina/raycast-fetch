@@ -1,108 +1,58 @@
+import { createDownloadHistory, reconcileHistory, type DownloadRecord } from "@chrismessina/raycast-downloader/history";
 import { LocalStorage } from "@raycast/api";
-import { logDebug, logInfo } from "./logger";
+import { logInfo } from "./logger";
 
-export interface DownloadHistoryItem {
-  id: string;
-  url: string;
-  filename: string;
-  outputPath: string;
-  status: "completed" | "failed";
-  bytesDownloaded?: number;
-  error?: string;
-  timestamp: number;
-}
+export type DownloadHistoryItem = DownloadRecord<{ url?: string }>;
 
-const HISTORY_KEY = "download-history";
-const MAX_HISTORY_ITEMS = 100;
+/**
+ * Download history, backed by the package's store rather than a hand-rolled one.
+ *
+ * The store matters more now that transfers are detached: a download that lands
+ * after the Raycast window closes has no command left to record it, so
+ * `reconcileHistory` sweeps the runner's status files into history on next open.
+ * Without that, every background completion would be missing from the list.
+ */
+const history = createDownloadHistory<{ url?: string }>({
+  key: "download-history",
+  limit: 100,
+  storage: {
+    getItem: (key) => LocalStorage.getItem<string>(key),
+    setItem: (key, value) => LocalStorage.setItem(key, value),
+    removeItem: (key) => LocalStorage.removeItem(key),
+  },
+  // Signed URLs carry credentials in the query string and expire; keeping one in
+  // history offers a "Download Again" that leaks a token and fails anyway.
+  urlPolicy: "omit-signed",
+});
 
 export async function getDownloadHistory(): Promise<DownloadHistoryItem[]> {
-  try {
-    const stored = await LocalStorage.getItem<string>(HISTORY_KEY);
-    if (!stored) {
-      return [];
-    }
-    const history = JSON.parse(stored) as DownloadHistoryItem[];
-    logDebug("Retrieved download history", { count: history.length });
-    return history;
-  } catch (error) {
-    logDebug("Failed to retrieve download history", { error });
-    return [];
-  }
+  // Fold in anything the detached runners finished while no command was open.
+  const swept = await reconcileHistory(history);
+  if (swept > 0) logInfo("Reconciled detached downloads into history", { count: swept });
+  return history.list();
 }
 
 export async function addToHistory(item: Omit<DownloadHistoryItem, "timestamp">): Promise<void> {
-  try {
-    const history = await getDownloadHistory();
-
-    const newItem: DownloadHistoryItem = {
-      ...item,
-      timestamp: Date.now(),
-    };
-
-    // Add to beginning (most recent first)
-    history.unshift(newItem);
-
-    // Trim to max size
-    const trimmed = history.slice(0, MAX_HISTORY_ITEMS);
-
-    await LocalStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-    logDebug("Added item to download history", { url: item.url, filename: item.filename });
-  } catch (error) {
-    logDebug("Failed to add to download history", { error });
-  }
+  await history.add(item);
 }
 
-export async function addBatchToHistory(items: Omit<DownloadHistoryItem, "timestamp">[]): Promise<void> {
-  try {
-    const history = await getDownloadHistory();
-    const timestamp = Date.now();
-
-    const newItems: DownloadHistoryItem[] = items.map((item, index) => ({
-      ...item,
-      timestamp: timestamp - index, // Slight offset to maintain order
-    }));
-
-    // Add to beginning (most recent first)
-    history.unshift(...newItems);
-
-    // Trim to max size
-    const trimmed = history.slice(0, MAX_HISTORY_ITEMS);
-
-    await LocalStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-    logInfo("Added batch to download history", { count: items.length });
-  } catch (error) {
-    logDebug("Failed to add batch to download history", { error });
-  }
-}
-
-export async function clearHistory(): Promise<void> {
-  await LocalStorage.removeItem(HISTORY_KEY);
-  logInfo("Cleared download history");
+export async function addBatchToHistory(items: Array<Omit<DownloadHistoryItem, "timestamp">>): Promise<void> {
+  await history.addMany(items);
 }
 
 export async function removeFromHistory(id: string): Promise<void> {
-  try {
-    const history = await getDownloadHistory();
-    const filtered = history.filter((item) => item.id !== id);
-    await LocalStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
-    logDebug("Removed item from download history", { id });
-  } catch (error) {
-    logDebug("Failed to remove from download history", { error });
-  }
+  await history.remove(id);
+}
+
+export async function clearHistory(): Promise<void> {
+  await history.clear();
+  logInfo("Cleared download history");
 }
 
 export async function clearHistoryByAge(minutes: number): Promise<number> {
-  try {
-    const history = await getDownloadHistory();
-    const cutoff = Date.now() - minutes * 60 * 1000;
-    // Keep items older than the cutoff (remove recent items within the time window)
-    const filtered = history.filter((item) => item.timestamp <= cutoff);
-    const removedCount = history.length - filtered.length;
-    await LocalStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
-    logInfo("Cleared history by age", { minutes, removedCount });
-    return removedCount;
-  } catch (error) {
-    logDebug("Failed to clear history by age", { error });
-    return 0;
-  }
+  const cutoff = Date.now() - minutes * 60 * 1000;
+  const recent = (await history.list()).filter((item) => item.timestamp > cutoff);
+  for (const item of recent) await history.remove(item.id);
+  logInfo("Cleared history by age", { minutes, removedCount: recent.length });
+  return recent.length;
 }

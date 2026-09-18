@@ -1,43 +1,34 @@
-import { open, showHUD, showToast, Toast } from "@raycast/api";
+import { formatBytes, formatEta, formatSpeed } from "@chrismessina/raycast-downloader/progress";
+import { showError } from "@chrismessina/raycast-kit";
+import { open, showInFinder, showToast, Toast } from "@raycast/api";
 import { DownloadProgress } from "./downloader";
 import { logDebug } from "./logger";
 
 const UPDATE_THROTTLE_MS = 250;
-// Per-filename throttle so concurrent downloads don't clobber each other's HUD cadence.
+// Per-filename throttle so concurrent downloads do not clobber each other's update cadence.
 const lastUpdateTimeByKey = new Map<string, number>();
 
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+/**
+ * Start the progress toast for a single download.
+ *
+ * Deliberately a Toast rather than a HUD. `showHUD` closes the main Raycast
+ * window, and `showToast` degrades to a non-interactive notification whenever the
+ * window is closed — so a HUD anywhere earlier in this flow silently strips the
+ * actions off the completion toast. Toasts are also Raycast's documented
+ * primitive for reporting asynchronous work; HUDs are for instant confirmations.
+ */
+export async function showDownloadStarted(filename: string): Promise<Toast> {
+  logDebug("Download toast started", { filename });
+  lastUpdateTimeByKey.delete(filename);
 
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-
-  return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+  return showToast({
+    style: Toast.Style.Animated,
+    title: "Downloading",
+    message: filename,
+  });
 }
 
-export function formatSpeed(bytesPerSec: number): string {
-  return `${formatBytes(bytesPerSec)}/s`;
-}
-
-export function formatEta(seconds: number): string {
-  if (seconds <= 0 || !isFinite(seconds)) return "";
-
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`;
-  } else if (seconds < 3600) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.round(seconds % 60);
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  } else {
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.round((seconds % 3600) / 60);
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-  }
-}
-
-export async function showDownloadProgress(filename: string, progress: DownloadProgress): Promise<void> {
+export async function showDownloadProgress(toast: Toast, filename: string, progress: DownloadProgress): Promise<void> {
   const now = Date.now();
   const last = lastUpdateTimeByKey.get(filename) ?? 0;
 
@@ -48,7 +39,7 @@ export async function showDownloadProgress(filename: string, progress: DownloadP
   lastUpdateTimeByKey.set(filename, now);
 
   const percent = Math.round(progress.percent);
-  let message = `Downloading ${filename}... ${percent}%`;
+  let message = `${filename} — ${percent}%`;
 
   if (progress.speed > 0) {
     message += ` (${formatSpeed(progress.speed)})`;
@@ -57,60 +48,61 @@ export async function showDownloadProgress(filename: string, progress: DownloadP
   if (progress.eta > 0) {
     const etaStr = formatEta(progress.eta);
     if (etaStr) {
-      message += ` - ${etaStr} remaining`;
+      message += ` · ${etaStr} remaining`;
     }
   }
 
-  logDebug("HUD progress update", { filename, percent });
-  await showHUD(message);
+  logDebug("Download toast progress", { filename, percent });
+  toast.message = message;
 }
 
-export async function showDownloadStarted(filename: string): Promise<void> {
-  logDebug("HUD download started", { filename });
+export async function showDownloadComplete(toast: Toast, filename: string, path: string): Promise<void> {
+  logDebug("Download toast complete", { filename, path });
   lastUpdateTimeByKey.delete(filename);
-  await showHUD(`Downloading ${filename}...`);
-}
 
-export async function showDownloadComplete(filename: string, path: string): Promise<void> {
-  logDebug("HUD download complete", { filename, path });
-  lastUpdateTimeByKey.delete(filename);
+  // Replace rather than mutate: flipping `style` on an already-presented toast
+  // leaves the animated spinner in place, so the "finished" toast keeps spinning.
+  await toast.hide();
 
   await showToast({
     style: Toast.Style.Success,
     title: "Download Complete",
     message: filename,
     primaryAction: {
+      title: "Show in Finder",
+      shortcut: { modifiers: ["cmd"], key: "return" },
+      onAction: () => {
+        showInFinder(path);
+      },
+    },
+    secondaryAction: {
       title: "Open File",
+      shortcut: { modifiers: ["cmd"], key: "o" },
       onAction: () => {
         open(path);
       },
     },
-    secondaryAction: {
-      title: "Reveal in Finder",
-      onAction: () => {
-        open(path, "Finder");
-      },
-    },
   });
 }
 
-export async function showDownloadError(filename: string, error: string): Promise<void> {
-  logDebug("HUD download error", { filename, error });
+export async function showDownloadError(toast: Toast, filename: string, error: string, url?: string): Promise<void> {
+  logDebug("Download toast error", { filename, error });
   lastUpdateTimeByKey.delete(filename);
 
-  await showToast({
-    style: Toast.Style.Failure,
+  await toast.hide();
+
+  await showError(new Error(error), {
     title: "Download Failed",
     message: `${filename}: ${error}`,
+    copyContext: url,
   });
 }
 
 export async function showValidationError(message: string): Promise<void> {
-  logDebug("HUD validation error", { message });
+  logDebug("Validation error", { message });
 
-  await showToast({
-    style: Toast.Style.Failure,
-    title: "Invalid URL",
-    message,
-  });
+  await showError(new Error(message), { title: "Invalid URL" });
 }
+
+// Re-exported so views keep importing formatters from one place.
+export { formatBytes, formatEta, formatSpeed };

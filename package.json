@@ -2,12 +2,11 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "fetch",
   "title": "Fetch",
-  "description": "Download files from the web.",
+  "description": "Download one or many files with curl: batch downloads, URL range patterns, and download history.",
   "icon": "fetch-icon.png",
   "author": "chrismessina",
   "platforms": [
-    "macOS",
-    "Windows"
+    "macOS"
   ],
   "categories": [
     "Web",
@@ -18,7 +17,6 @@
     {
       "name": "download",
       "title": "Download",
-      "subtitle": "Fetch",
       "description": "Download a single file from a URL.",
       "mode": "no-view",
       "arguments": [
@@ -33,14 +31,12 @@
     {
       "name": "download-batch",
       "title": "Download Batch",
-      "subtitle": "Fetch",
       "description": "Download multiple files from a list of URLs.",
       "mode": "view"
     },
     {
       "name": "download-history",
       "title": "Download History",
-      "subtitle": "Fetch",
       "description": "View download history.",
       "mode": "view"
     }
@@ -55,6 +51,15 @@
       "required": false
     },
     {
+      "name": "overwriteExisting",
+      "title": "Overwrite Existing",
+      "description": "Overwrite files if they already exist",
+      "type": "checkbox",
+      "default": false,
+      "label": "Overwrite existing files",
+      "required": false
+    },
+    {
       "name": "followRedirects",
       "title": "Follow Redirects",
       "description": "Automatically follow HTTP redirects",
@@ -65,40 +70,35 @@
     },
     {
       "name": "defaultTimeout",
-      "title": "Timeout (seconds)",
-      "description": "Download timeout in seconds",
+      "title": "Timeout",
+      "description": "Maximum seconds to wait for a download before giving up",
       "type": "textfield",
       "default": "300",
-      "required": false
-    },
-    {
-      "name": "overwriteExisting",
-      "title": "Overwrite Existing",
-      "description": "Overwrite files if they already exist",
-      "type": "checkbox",
-      "default": false,
-      "label": "Overwrite existing files",
-      "required": false
-    },
-    {
-      "name": "enableDebugLogging",
-      "title": "Debug Logging",
-      "description": "Enable verbose debug logging",
-      "type": "checkbox",
-      "default": false,
-      "label": "Enable debug logging",
-      "required": false
+      "required": false,
+      "placeholder": "300"
     },
     {
       "name": "maxParallelDownloads",
       "title": "Max Parallel Downloads",
-      "description": "Maximum number of concurrent downloads for batch operations",
+      "description": "Maximum concurrent downloads for batch operations (capped at 10)",
       "type": "textfield",
       "default": "3",
+      "required": false,
+      "placeholder": "3"
+    },
+    {
+      "name": "verboseLogging",
+      "title": "Verbose Logging",
+      "description": "Log curl commands and download diagnostics to the console. Sensitive values are redacted.",
+      "type": "checkbox",
+      "default": false,
+      "label": "Enable verbose logging",
       "required": false
     }
   ],
   "dependencies": {
+    "@chrismessina/raycast-downloader": "^0.1.5",
+    "@chrismessina/raycast-kit": "^0.1.3",
     "@chrismessina/raycast-logger": "^1.2.2",
     "@raycast/api": "^1.104.1",
     "@raycast/utils": "^1.17.0"
@@ -118,6 +118,9 @@
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
     "prepublishOnly": "echo \"\\n\\nIt seems like you are trying to publish the Raycast extension to npm.\\n\\nIf you did intend to publish it to npm, remove the \\`prepublishOnly\\` script and rerun \\`npm publish\\` again.\\nIf you wanted to publish it to the Raycast Store instead, use \\`npm run publish\\` instead.\\n\\n\" && exit 1",
-    "publish": "npx @raycast/api@latest publish"
+    "publish": "npx @raycast/api@latest publish",
+    "sync-runner": "node scripts/sync-runner.mjs",
+    "predev": "npm run sync-runner",
+    "prebuild": "npm run sync-runner"
   }
 }

@@ -1,5 +1,4 @@
 import { Logger } from "@chrismessina/raycast-logger";
-import { getPreferenceValues } from "@raycast/api";
 
 export interface LogContext {
   command?: string;
@@ -8,7 +7,12 @@ export interface LogContext {
   [key: string]: unknown;
 }
 
-export interface DownloadProgress {
+/**
+ * Structural subset of `DownloadProgress` from `./downloader`. Declared locally
+ * rather than imported because `downloader` imports this module — importing back
+ * would create a cycle.
+ */
+export interface LoggableProgress {
   percent: number;
   bytesDownloaded: number;
   totalBytes: number;
@@ -16,20 +20,10 @@ export interface DownloadProgress {
   eta: number;
 }
 
-interface Preferences {
-  enableDebugLogging?: boolean;
-}
-
+// No `isVerboseEnabled` override: the logger's default already reads the
+// `verboseLogging` preference, which is why the manifest uses that exact name.
 const logger = new Logger({
   prefix: "[Fetch]",
-  isVerboseEnabled: () => {
-    try {
-      const prefs = getPreferenceValues<Preferences>();
-      return prefs.enableDebugLogging ?? false;
-    } catch {
-      return false;
-    }
-  },
   showTimestamp: true,
   enableRedaction: true,
 });
@@ -58,7 +52,7 @@ export function logDownloadStart(url: string, outputPath: string): void {
   logInfo("Download started", { url, outputPath });
 }
 
-export function logDownloadProgress(url: string, progress: DownloadProgress): void {
+export function logDownloadProgress(url: string, progress: LoggableProgress): void {
   // Only log at milestones (25%, 50%, 75%) to avoid spam
   const milestones = [25, 50, 75];
   const percent = Math.floor(progress.percent);

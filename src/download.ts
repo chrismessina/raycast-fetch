@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { releaseReservation } from "@chrismessina/raycast-downloader/paths";
 import { Clipboard, launchCommand, LaunchProps, LaunchType } from "@raycast/api";
 import { downloadFile } from "./lib/downloader";
 import { addToHistory } from "./lib/history";
@@ -20,15 +21,12 @@ import {
   resolveOutputPath,
 } from "./lib/url-utils";
 
-interface Arguments {
-  url?: string;
-}
-
-export default async function Command(props: LaunchProps<{ arguments: Arguments }>) {
+export default async function Command(props: LaunchProps<{ arguments: Arguments.Download }>) {
   const preferences = getPreferences();
 
-  // Get URL from argument or clipboard
-  let url = props.arguments.url?.trim();
+  // Get URL from argument or clipboard. The argument is declared optional in the
+  // manifest, so it can be absent at runtime despite the generated type.
+  let url: string | undefined = props.arguments.url?.trim();
   let source: "argument" | "clipboard" = "argument";
 
   if (!url) {
@@ -64,7 +62,7 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
     await launchCommand({
       name: "download-batch",
       type: LaunchType.UserInitiated,
-      context: { urls: expandedUrls },
+      context: { urls: expandedUrls, outputDirectory: preferences.outputDirectory },
     });
     return;
   }
@@ -83,8 +81,8 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
 
   logDebug("Output path resolved", { filename, outputPath });
 
-  // Show initial HUD
-  await showDownloadStarted(filename);
+  // Show the progress toast before any work starts, so the command is never silent.
+  const toast = await showDownloadStarted(filename);
 
   // Start download
   const handle = downloadFile(
@@ -95,17 +93,23 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
       timeout: preferences.defaultTimeout,
     },
     async (progress) => {
-      await showDownloadProgress(filename, progress);
+      await showDownloadProgress(toast, filename, progress);
     },
   );
 
   // Wait for completion
   const result = await handle.promise;
 
+  // Startup failed before the runner took ownership of the reserved `.part`
+  // (missing runner, missing curl, bad path) — release it so the name stays free.
+  if (!result.success && result.bytesDownloaded === undefined && !result.id) {
+    releaseReservation(outputPath);
+  }
+
   if (result.success) {
-    await showDownloadComplete(filename, result.outputPath!);
+    await showDownloadComplete(toast, filename, result.outputPath ?? outputPath);
     await addToHistory({
-      id: randomUUID(),
+      id: result.id ?? randomUUID(),
       url,
       filename,
       outputPath,
@@ -113,14 +117,14 @@ export default async function Command(props: LaunchProps<{ arguments: Arguments 
       bytesDownloaded: result.bytesDownloaded,
     });
   } else {
-    await showDownloadError(filename, result.error || "Unknown error");
+    await showDownloadError(toast, filename, result.error || "Unknown error", url);
     await addToHistory({
-      id: randomUUID(),
+      id: result.id ?? randomUUID(),
       url,
       filename,
       outputPath,
       status: "failed",
-      error: result.error,
+      error: { code: result.errorCode ?? "unknown", message: result.error ?? "Unknown error" },
     });
   }
 }

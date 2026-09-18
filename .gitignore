@@ -13,5 +13,9 @@ compiled_raycast_rust
 # misc
 .DS_Store
 .claude
-.github
 /CLAUDE.md
+
+# Internal planning docs — design intent, not shipped documentation.
+# These describe commands and preferences that were folded in or never built,
+# so they only confuse a Store reviewer reading them as a spec.
+/docs

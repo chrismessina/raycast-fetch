@@ -1,3 +1,5 @@
+import { releaseReservation } from "@chrismessina/raycast-downloader/paths";
+import { countOf, getErrorMessage, showError } from "@chrismessina/raycast-kit";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Action,
@@ -40,8 +42,24 @@ interface LaunchContext {
   outputDirectory?: string;
 }
 
+/**
+ * Thrown to unwind out of filename resolution when the user cancels the preflight.
+ *
+ * Carries the paths already reserved so they can be released — each resolved item
+ * has created a zero-byte `<path>.part`, and leaving them behind permanently
+ * shifts later downloads onto " (1)" names.
+ */
+class PreparationCancelled extends Error {
+  constructor(readonly reservedPaths: string[] = []) {
+    super("Preparation cancelled");
+    this.name = "PreparationCancelled";
+  }
+}
+
 export default function Command(props: LaunchProps<{ launchContext?: LaunchContext }>) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
   const [downloadItems, setDownloadItems] = useState<BatchDownloadItem[]>([]);
   const [batchHandle, setBatchHandle] = useState<BatchDownloadHandle | null>(null);
   const [urlsInput, setUrlsInput] = useState("");
@@ -53,43 +71,101 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     downloadItemsRef.current = downloadItems;
   }, [downloadItems]);
 
+  // Set by "Cancel All" while filenames are still resolving — the preflight has no
+  // batch handle to cancel yet, and on a large batch it can run for a long time.
+  const prepareCancelledRef = useRef(false);
+
   const preferences = getPreferences();
   const launchContext = props.launchContext;
 
   const prepareItems = useCallback(
-    async (urls: string[], outputDirectory: string): Promise<PreparedItem[]> => {
-      const items: PreparedItem[] = [];
+    async (urls: string[], outputDirectory: string, onResolved: (done: number) => void): Promise<PreparedItem[]> => {
+      // Each URL needs a HEAD request to resolve its filename. Doing this serially
+      // meant a long blank screen before the first row appeared, so resolve in
+      // bounded-concurrency waves and report progress as they land.
+      const batchSize = Math.max(preferences.maxParallelDownloads, 1);
+      const items: PreparedItem[] = new Array(urls.length);
+      const startedAt = Date.now();
+      let resolved = 0;
 
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-        const id = `download-${Date.now()}-${i}`;
-        const { filename, outputPath } = await resolveOutputPath(url, outputDirectory, preferences.overwriteExisting);
-        items.push({ id, url, filename, outputPath });
+      for (let offset = 0; offset < urls.length; offset += batchSize) {
+        if (prepareCancelledRef.current) {
+          throw new PreparationCancelled(items.filter(Boolean).map((i) => i.outputPath));
+        }
+
+        const slice = urls.slice(offset, offset + batchSize);
+
+        await Promise.all(
+          slice.map(async (url, sliceIndex) => {
+            const index = offset + sliceIndex;
+            const { filename, outputPath } = await resolveOutputPath(
+              url,
+              outputDirectory,
+              preferences.overwriteExisting,
+            );
+            items[index] = { id: `download-${startedAt}-${index}`, url, filename, outputPath };
+            resolved++;
+            onResolved(resolved);
+          }),
+        );
+      }
+
+      // Cancellation can land DURING the final wave: the wave resolves, the loop
+      // condition is already false, and control would return normally with a full
+      // item list — launching everything the user just cancelled.
+      if (prepareCancelledRef.current) {
+        throw new PreparationCancelled(items.filter(Boolean).map((i) => i.outputPath));
       }
 
       return items;
     },
-    [preferences.overwriteExisting],
+    [preferences.overwriteExisting, preferences.maxParallelDownloads],
   );
 
   // Shared function to start downloads from a list of URLs
   const startDownloads = useCallback(
     async (urls: string[], outputDirectory: string) => {
       if (urls.length === 0) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "No URLs Found",
-          message: "No valid URLs found in input.",
-        });
+        await showError(new Error("No valid URLs found in input."), { title: "No URLs Found" });
         return;
       }
 
       logInfo("Batch download initiated", { urlCount: urls.length, outputDirectory });
 
+      prepareCancelledRef.current = false;
       setIsDownloading(true);
+      setIsPreparing(true);
 
-      // Prepare items with filenames
-      const preparedItems = await prepareItems(urls, outputDirectory);
+      // Resolving filenames requires a HEAD per URL, which is slow for large
+      // batches — show a counter immediately so the list is never silently blank.
+      const preparingToast = await showToast({
+        style: Toast.Style.Animated,
+        title: "Resolving Filenames",
+        message: `0 of ${urls.length}`,
+      });
+
+      let preparedItems: PreparedItem[];
+      try {
+        preparedItems = await prepareItems(urls, outputDirectory, (done) => {
+          preparingToast.message = `${done} of ${urls.length}`;
+        });
+      } catch (error) {
+        // Never strand the user in an empty list with no way back to the form.
+        setIsPreparing(false);
+        setIsDownloading(false);
+        await preparingToast.hide();
+
+        if (error instanceof PreparationCancelled) {
+          for (const path of error.reservedPaths) releaseReservation(path);
+          await showToast({ style: Toast.Style.Success, title: "Cancelled" });
+        } else {
+          await showError(error, { title: "Could Not Prepare Downloads" });
+        }
+        return;
+      }
+
+      setIsPreparing(false);
+      await preparingToast.hide();
 
       // Initialize download items for display
       const initialItems: BatchDownloadItem[] = preparedItems.map((item) => ({
@@ -128,15 +204,20 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
 
       // Save completed/failed items to history
       const historyItems = finalResult.items
-        .filter((item) => item.status === "completed" || item.status === "failed")
+        .filter(
+          (item): item is BatchDownloadItem & { status: "completed" | "failed" } =>
+            item.status === "completed" || item.status === "failed",
+        )
         .map((item) => ({
-          id: item.id,
+          // The runner's ticket id, so `reconcileHistory` recognises this record
+          // as the same download rather than adding a duplicate.
+          id: item.result?.id ?? item.id,
           url: item.url,
           filename: item.filename,
           outputPath: item.outputPath,
-          status: item.status as "completed" | "failed",
+          status: item.status,
           bytesDownloaded: item.result?.bytesDownloaded,
-          error: item.error,
+          error: item.error ? { code: item.errorCode ?? "unknown", message: item.error } : undefined,
         }));
 
       if (historyItems.length > 0) {
@@ -144,14 +225,31 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       }
 
       const completedCount = finalResult.items.filter((i) => i.status === "completed").length;
-      const failedCount = finalResult.items.filter((i) => i.status === "failed").length;
+      // Cancelled counts as "not downloaded" here: an all-cancelled batch reporting
+      // a green "0 files downloaded" would be the UI lying about what happened.
+      const failedItems = finalResult.items.filter((i) => i.status === "failed" || i.status === "cancelled");
+      const failedCount = failedItems.length;
 
-      await showToast({
-        style: failedCount > 0 ? Toast.Style.Failure : Toast.Style.Success,
-        title: "Batch Download Complete",
-        message:
-          failedCount > 0 ? `${completedCount} succeeded, ${failedCount} failed` : `${completedCount} files downloaded`,
-      });
+      setIsFinished(true);
+
+      if (failedCount > 0) {
+        const cancelledCount = failedItems.filter((i) => i.status === "cancelled").length;
+        const notCompleted =
+          cancelledCount === failedCount ? `${countOf(cancelledCount, "download")} cancelled` : `${failedCount} failed`;
+
+        // Every per-item error goes on the clipboard — the summary toast alone
+        // gives the user no way to see which URLs failed or why.
+        await showError(new Error(`${completedCount} succeeded, ${notCompleted}`), {
+          title: "Batch Download Complete",
+          copyContext: failedItems.map((i) => `${i.url}: ${i.error ?? "Unknown error"}`).join("\n"),
+        });
+      } else {
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Batch Download Complete",
+          message: `${countOf(completedCount, "file")} downloaded`,
+        });
+      }
     },
     [prepareItems, preferences],
   );
@@ -204,7 +302,7 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       const tabs = await BrowserExtension.getTabs();
       const urls = tabs.map((t) => t.url).filter((u): u is string => typeof u === "string" && u.length > 0);
       if (urls.length === 0) {
-        await showToast({ style: Toast.Style.Failure, title: "No Browser Tabs", message: "No open tabs found." });
+        await showError(new Error("No open tabs found."), { title: "No Browser Tabs" });
         return;
       }
       const existing = urlsInput.trim();
@@ -212,12 +310,12 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       await showToast({
         style: Toast.Style.Success,
         title: "Imported Browser Tabs",
-        message: `Added ${urls.length} ${urls.length === 1 ? "URL" : "URLs"}`,
+        message: `Added ${countOf(urls.length, "URL")}`,
       });
     } catch (error) {
-      logWarn("Browser tab import failed", { error: error instanceof Error ? error.message : String(error) });
-      await showToast({
-        style: Toast.Style.Failure,
+      logWarn("Browser tab import failed", { error: getErrorMessage(error) });
+      // Show the friendly cause, but keep the real thrown error on the clipboard.
+      await showError(error, {
         title: "Browser Extension Unavailable",
         message: "Install the Raycast browser extension to use this feature.",
       });
@@ -227,6 +325,10 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
   const handleRetry = useCallback(
     async (item: BatchDownloadItem) => {
       logDebug("Retrying failed download", { url: item.url });
+
+      // A retry makes the batch active again. Without this, "Download More Files"
+      // stays available and would abandon the running retry mid-flight.
+      setIsFinished(false);
 
       // Update item status to pending
       setDownloadItems((prev) =>
@@ -272,6 +374,14 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
       }
 
       await handle.promise;
+
+      // Re-offer the way back to the form once nothing else is still running.
+      const stillActive = downloadItemsRef.current.some(
+        (i) => i.id !== item.id && (i.status === "downloading" || i.status === "pending"),
+      );
+      if (!stillActive) {
+        setIsFinished(true);
+      }
     },
     [preferences],
   );
@@ -289,8 +399,31 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
     return { count: info.count, padHint, preview };
   }, [urlsInput]);
 
+  // Returning to the form after a batch ends — without this the view is a
+  // one-way door and the command has to be closed and reopened.
+  const handleStartOver = useCallback(() => {
+    setIsDownloading(false);
+    setIsFinished(false);
+    setDownloadItems([]);
+    setBatchHandle(null);
+  }, []);
+
+  const handleCancelPreparation = useCallback(() => {
+    prepareCancelledRef.current = true;
+  }, []);
+
   if (isDownloading) {
-    return <DownloadListView items={downloadItems} batchHandle={batchHandle} onRetry={handleRetry} />;
+    return (
+      <DownloadListView
+        items={downloadItems}
+        batchHandle={batchHandle}
+        onRetry={handleRetry}
+        isPreparing={isPreparing}
+        isFinished={isFinished}
+        onStartOver={handleStartOver}
+        onCancelPreparation={handleCancelPreparation}
+      />
+    );
   }
 
   return (

@@ -1,3 +1,4 @@
+import { countOf } from "@chrismessina/raycast-kit";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Color, confirmAlert, Icon, List, showToast, Toast } from "@raycast/api";
 import { HistoryItemActions } from "./actions/history-item-actions";
@@ -10,10 +11,15 @@ import {
 } from "./lib/history";
 import { formatBytes } from "./lib/progress";
 
-function getStatusIcon(status: "completed" | "failed"): { source: Icon; tintColor: Color } {
-  return status === "completed"
-    ? { source: Icon.CheckCircle, tintColor: Color.Green }
-    : { source: Icon.XMarkCircle, tintColor: Color.Red };
+function getStatusIcon(status: DownloadHistoryItem["status"]): { source: Icon; tintColor: Color } {
+  switch (status) {
+    case "completed":
+      return { source: Icon.CheckCircle, tintColor: Color.Green };
+    case "cancelled":
+      return { source: Icon.MinusCircle, tintColor: Color.Orange };
+    default:
+      return { source: Icon.XMarkCircle, tintColor: Color.Red };
+  }
 }
 
 function formatDate(timestamp: number): string {
@@ -50,10 +56,12 @@ export default function Command() {
 
   const handleClearHistory = useCallback(async () => {
     const confirmed = await confirmAlert({
-      title: "Clear Download History",
-      message: "Are you sure you want to clear all download history? This cannot be undone.",
+      title: "Delete All Entries",
+      // Say what is NOT affected: "delete" next to a list of files reads as though
+      // it removes the files themselves.
+      message: "This clears the download history. The downloaded files are not deleted.",
       primaryAction: {
-        title: "Clear",
+        title: "Delete All Entries",
         style: Alert.ActionStyle.Destructive,
       },
     });
@@ -61,14 +69,18 @@ export default function Command() {
     if (confirmed) {
       await clearHistory();
       setHistory([]);
-      await showToast({ style: Toast.Style.Success, title: "History Cleared" });
+      await showToast({ style: Toast.Style.Success, title: "Deleted All Entries" });
     }
   }, []);
 
   const handleRemoveItem = useCallback(async (item: DownloadHistoryItem) => {
     await removeFromHistory(item.id);
     setHistory((prev) => prev.filter((i) => i.id !== item.id));
-    await showToast({ style: Toast.Style.Success, title: "Removed from History" });
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Entry Deleted",
+      message: "The downloaded file was not removed.",
+    });
   }, []);
 
   const handleClearByAge = useCallback(
@@ -79,14 +91,14 @@ export default function Command() {
       if (removedCount === 0) {
         await showToast({
           style: Toast.Style.Success,
-          title: "No Downloads to Remove",
-          message: `No downloads found from the last ${minutes} minutes`,
+          title: "No Entries to Delete",
+          message: `Nothing in the history from the last ${minutes} minutes`,
         });
       } else {
         await showToast({
           style: Toast.Style.Success,
-          title: "Downloads Deleted",
-          message: `Removed ${removedCount} ${removedCount === 1 ? "download" : "downloads"} from the last ${minutes} minutes`,
+          title: `Deleted ${countOf(removedCount, "Entry", { plural: "Entries" })}`,
+          message: `From the last ${minutes} minutes. The downloaded files were not removed.`,
         });
       }
     },
@@ -94,14 +106,25 @@ export default function Command() {
   );
 
   const completedCount = history.filter((item) => item.status === "completed").length;
-  const failedCount = history.length - completedCount;
+  const cancelledCount = history.filter((item) => item.status === "cancelled").length;
+  const failedCount = history.length - completedCount - cancelledCount;
+
+  // Cancelled is its own outcome now — folding it into "failed" told the user a
+  // download they stopped on purpose had gone wrong.
+  const historySummary = [
+    `${completedCount} completed`,
+    failedCount > 0 ? `${failedCount} failed` : null,
+    cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <List isLoading={isLoading} navigationTitle="Download History" searchBarPlaceholder="Search history...">
       {history.length === 0 && !isLoading ? (
         <List.EmptyView icon={Icon.Clock} title="No Download History" description="Downloads will appear here" />
       ) : (
-        <List.Section title="History" subtitle={`${completedCount} completed, ${failedCount} failed`}>
+        <List.Section title="History" subtitle={historySummary}>
           {history.map((item) => (
             <List.Item
               key={item.id}

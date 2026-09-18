@@ -1,13 +1,51 @@
 import { spawn } from "child_process";
-import { existsSync } from "fs";
 import { basename, extname, join } from "path";
+import { sanitizeFilename, uniquePath } from "@chrismessina/raycast-downloader/paths";
 import { logDebug, logInfo, logWarn } from "./logger";
 
 // URL extraction patterns
-const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+// The target allows one level of balanced parentheses so that links to URLs like
+// `…/wiki/Foo_(bar)` capture the whole target instead of stopping at the first `)`.
+const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g;
+// Square brackets are intentionally allowed: curl-style range patterns
+// (`file[001-025].zip`) must survive extraction so `expandRangeUrl` can see them.
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`]+/g;
 // Trailing characters that are almost always prose punctuation, not part of the URL.
-const URL_TRAILING_PUNCT = /[.,;:!?)'"\]>]+$/;
+// `)` and `]` are handled separately by `stripTrailingPunctuation` because they
+// are legitimate URL characters when balanced.
+const URL_TRAILING_PUNCT = /[.,;:!?'"<>)\]]$/;
+
+/**
+ * Strip trailing prose punctuation from a URL, one character at a time.
+ *
+ * A trailing `)` or `]` is only removed when it is *unbalanced* — otherwise it
+ * belongs to the URL. This keeps `…/Foo_(bar)` and `…/file[001-025].zip` intact
+ * while still trimming the `)` off `(see https://example.com/a.zip)`.
+ */
+function stripTrailingPunctuation(raw: string): string {
+  let url = raw.trim();
+
+  for (;;) {
+    const match = url.match(URL_TRAILING_PUNCT);
+    if (!match) break;
+
+    const char = match[0];
+    if (char === ")" && countChar(url, "(") >= countChar(url, ")")) break;
+    if (char === "]" && countChar(url, "[") >= countChar(url, "]")) break;
+
+    url = url.slice(0, -1);
+  }
+
+  return url;
+}
+
+function countChar(text: string, char: string): number {
+  let count = 0;
+  for (const c of text) {
+    if (c === char) count++;
+  }
+  return count;
+}
 
 /**
  * Extract URLs from mixed text input — handles markdown `[text](url)` links and
@@ -34,7 +72,7 @@ export function extractUrlStringsFromText(text: string): string[] {
   URL_REGEX.lastIndex = 0;
   while ((match = URL_REGEX.exec(text)) !== null) {
     const rawMatch = match[0];
-    const url = rawMatch.replace(URL_TRAILING_PUNCT, "").trim();
+    const url = stripTrailingPunctuation(rawMatch);
     const start = match.index;
     const end = start + rawMatch.length;
 
@@ -224,7 +262,7 @@ export function ensureExtension(filename: string, contentType?: string): string 
  * Clipboard/argument URLs often include a trailing `.` or `)` from surrounding text.
  */
 export function cleanUrl(url: string): string {
-  return url.trim().replace(URL_TRAILING_PUNCT, "");
+  return stripTrailingPunctuation(url);
 }
 
 export function isValidUrl(url: string): boolean {
@@ -292,68 +330,6 @@ function generateDefaultFilename(url: string): string {
   }
 }
 
-export function sanitizeFilename(name: string): string {
-  // Remove or replace characters that are problematic on most filesystems
-  let sanitized = name
-    // Replace path traversal attempts
-    .replace(/\.\./g, "_")
-    // Remove null bytes
-    .replace(/\0/g, "")
-    // Replace characters invalid on Windows/macOS
-    .replace(/[<>:"/\\|?*]/g, "_")
-    // Replace control characters (ASCII 0-31 and 128-159)
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1f\x80-\x9f]/g, "")
-    // Trim whitespace and dots from ends
-    .trim()
-    .replace(/^\.+|\.+$/g, "");
-
-  // Ensure filename isn't empty after sanitization
-  if (!sanitized) {
-    sanitized = `download_${Date.now()}`;
-  }
-
-  // Truncate if too long (keep extension if present)
-  const maxLength = 255;
-  if (sanitized.length > maxLength) {
-    const ext = extname(sanitized);
-    const nameWithoutExt = sanitized.substring(0, sanitized.length - ext.length);
-    const maxNameLength = maxLength - ext.length;
-    sanitized = nameWithoutExt.substring(0, maxNameLength) + ext;
-  }
-
-  return sanitized;
-}
-
-export function generateUniqueFilename(dir: string, name: string): string {
-  const sanitized = sanitizeFilename(name);
-  let candidate = join(dir, sanitized);
-
-  if (!existsSync(candidate)) {
-    return candidate;
-  }
-
-  // File exists, generate unique name
-  const ext = extname(sanitized);
-  const nameWithoutExt = sanitized.substring(0, sanitized.length - ext.length);
-
-  let counter = 1;
-  while (existsSync(candidate)) {
-    candidate = join(dir, `${nameWithoutExt} (${counter})${ext}`);
-    counter++;
-
-    // Safety limit
-    if (counter > 1000) {
-      const timestamp = Date.now();
-      candidate = join(dir, `${nameWithoutExt}_${timestamp}${ext}`);
-      break;
-    }
-  }
-
-  logDebug("Generated unique filename", { original: name, unique: candidate });
-  return candidate;
-}
-
 /**
  * Resolve a final output path for a URL: fetch HEAD metadata, extract a filename
  * (prefers Content-Disposition, falls back to URL path), ensure it has an extension
@@ -372,7 +348,13 @@ export async function resolveOutputPath(
   let filename = extractFilename(url, headInfo.contentDisposition);
   filename = ensureExtension(filename, headInfo.contentType);
 
-  const outputPath = overwrite ? join(outputDirectory, filename) : generateUniqueFilename(outputDirectory, filename);
+  // `uniquePath({ reserve: true })` claims the slot on the FILESYSTEM by creating
+  // `<path>.part`, so two concurrent callers can't be handed the same name. That
+  // is also the exact file the detached runner streams into, so the reservation
+  // and the download are the same artifact — nothing to release on the happy path.
+  const outputPath = overwrite
+    ? join(outputDirectory, filename)
+    : uniquePath(outputDirectory, filename, { reserve: true });
 
   return { filename, outputPath };
 }
@@ -526,9 +508,15 @@ export function expandRangeUrl(url: string, maxUrls: number = 500): string[] {
 
 /**
  * Expand multiple URLs, handling range patterns in any of them.
+ *
+ * Deduplicates *after* expansion: the input list is already deduplicated as raw
+ * strings, but expansion can reintroduce collisions — `file001.zip` alongside
+ * `file[001-002].zip` yields `file001.zip` twice, and two items resolving to the
+ * same output path race each other writing the same file.
  */
 export function expandAllRangeUrls(urls: string[], maxUrlsPerRange: number = 500): string[] {
-  return urls.flatMap((url) => expandRangeUrl(url, maxUrlsPerRange));
+  const expanded = urls.flatMap((url) => expandRangeUrl(url, maxUrlsPerRange));
+  return Array.from(new Set(expanded));
 }
 
 /**

@@ -106,7 +106,7 @@
     }
   ],
   "dependencies": {
-    "@chrismessina/raycast-downloader": "^0.1.5",
+    "@chrismessina/raycast-downloader": "^0.2.0",
     "@chrismessina/raycast-kit": "^0.2.0",
     "@chrismessina/raycast-logger": "^1.5.0",
     "@raycast/api": "^2.4.1"

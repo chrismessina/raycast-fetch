@@ -124,10 +124,13 @@ export function downloadFile(options: DownloadOptions, onProgress?: ProgressCall
       // output path to second-guess this — that scan was strictly weaker, since it
       // could not see a partial whose status had been pruned.
       expectedBytes,
-      // A HEAD-derived size can legitimately disagree with the GET (gzip, stale
-      // content-length), and Fetch's size always comes from a separate HEAD.
+      // No caller passes `expectedBytes` today: `resolveOutputPath` reads a
+      // Content-Length in its HEAD but does not return it. "advisory" is for when
+      // one does, since a HEAD's size can legitimately disagree with the GET (gzip,
+      // a stale Content-Length). An empty 200 fails either way, unless
+      // `expectedBytes` is 0.
       sizeCheck: "advisory",
-      // Wall-clock `maxTimeSeconds` is not plumbed to the runner either; stall
+      // Wall-clock `maxTimeSeconds` is not plumbed to the runner; stall
       // detection is the better control regardless — a large file should not die
       // at N seconds just for being large.
       stallSeconds: timeout,

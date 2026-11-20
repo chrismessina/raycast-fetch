@@ -6,13 +6,13 @@ Thanks for helping. This guide covers running Fetch locally and sending a change
 
 Fetch is published in the [Raycast Store](https://www.raycast.com/chrismessina/fetch).
 Open pull requests against [`raycast/extensions`](https://github.com/raycast/extensions/tree/main/extensions/fetch),
-not this repository: Raycast reviews every change there, and merged changes sync back here
-automatically. Open [issues](https://github.com/chrismessina/raycast-fetch/issues) here or in
+not this repository: Raycast reviews every change there, and merged changes come back here in a
+sync pull request. Open [issues](https://github.com/chrismessina/raycast-fetch/issues) here or in
 `raycast/extensions`, whichever you prefer.
 
 ## Run it locally
 
-You need [Raycast](https://www.raycast.com/) and Node.js 22 or later.
+You need [Raycast](https://www.raycast.com/) and Node.js 22.22.2 or later.
 
 1. In Raycast, find Fetch in the Store and choose **Fork Extension** from the action panel.
    Raycast checks out only this extension's folder from `raycast/extensions`.
@@ -28,6 +28,9 @@ You need [Raycast](https://www.raycast.com/) and Node.js 22 or later.
 | `npm run lint` | Run Raycast's ESLint and Prettier checks |
 | `npm run fix-lint` | Fix what the linter can fix |
 | `npm run sync-runner` | Copy the runner from `@chrismessina/raycast-downloader` into `assets/raycast-downloader-runner.js` |
+| `predev`, `prebuild` | Run `sync-runner` before `dev` and `build` |
+| `npm run publish` | Open or update the pull request in `raycast/extensions` (`ray publish`) |
+| `prepublishOnly` | Stops `npm publish`: the extension goes to the Raycast Store, never to the npm registry |
 
 `ray build` bundles with esbuild and does **not** typecheck — run `npx tsc --noEmit` separately.
 
@@ -51,7 +54,7 @@ raycast-fetch/
 The transfer itself is detached. `src/lib/downloader.ts` is an adapter over
 `@chrismessina/raycast-downloader`: `startDownload` spawns a runner that outlives the command and
 owns curl, resume by HTTP Range, stall detection and failure classification. A Store build ships no
-`node_modules`, so the runner must be in `assets/`; the copy is committed, because the Store build
+`node_modules`, so the runner must be in `assets/`. The copy is committed, because the Store build
 never runs `sync-runner`. Run `npm run sync-runner` and commit the result after updating the
 package.
 

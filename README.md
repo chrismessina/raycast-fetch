@@ -11,7 +11,7 @@
 
 **Download a link, a list of links, or a whole numbered sequence — without leaving Raycast or waiting on a browser window.**
 
-[Features](#features) • [Requirements](#requirements) • [Quick Start](#quick-start) • [Usage](#usage) • [Development](#development)
+[Features](#features) • [Requirements](#requirements) • [Quick Start](#quick-start) • [Usage](#usage)
 
 </div>
 
@@ -88,48 +88,6 @@ The batch form's output directory overrides the preference for that batch only.
 
 ---
 
-## Development
-
-### Project Structure
-
-```
-raycast-fetch/
-├── src/
-│   ├── download.ts              # Single download (no-view)
-│   ├── download-batch.tsx       # Batch form + progress list
-│   ├── download-history.tsx     # History list
-│   ├── lib/                     # Downloader adapter, URLs, history, toasts, prefs
-│   ├── views/                   # List views
-│   └── actions/                 # Action panels
-├── scripts/sync-runner.mjs      # Copies the downloader runner into assets/
-├── assets/                      # Extension icon + runner bundle (runtime)
-├── media/                       # README images
-└── package.json
-```
-
-### Scripts
-
-| Script | Description |
-| --- | --- |
-| `npm run dev` | Start in development mode with hot reload |
-| `npm run build` | Build for production |
-| `npm run lint` | Run Raycast ESLint config |
-| `npm run fix-lint` | Auto-fix lint issues |
-| `npm run publish` | Publish to the Raycast Store |
-
-`ray build` bundles with esbuild and does **not** typecheck — run `npx tsc --noEmit` separately.
-
-### Clone & Run
-
-```sh
-git clone https://github.com/chrismessina/raycast-fetch.git
-cd raycast-fetch
-npm install
-npm run dev
-```
-
----
-
 ## Tech Stack
 
 | Package | Role |
@@ -140,5 +98,7 @@ npm run dev
 | `@chrismessina/raycast-logger` | Logging gated on the Debug Logging preference |
 
 ---
+
+Want to contribute? See [CONTRIBUTING.md](https://github.com/chrismessina/raycast-fetch/blob/main/CONTRIBUTING.md).
 
 MIT © [Chris Messina](https://github.com/chrismessina)

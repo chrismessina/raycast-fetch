@@ -19,3 +19,6 @@ compiled_raycast_rust
 # can reach the public monorepo. (.gitignore alone would NOT achieve that —
 # `ray publish` reads no ignore file at all.)
 .github/.private
+
+# Contributor guide; stays in the mirror and never ships (see contributing-template.md).
+CONTRIBUTING.md
